@@ -275,6 +275,8 @@ func (u *UI) render() {
 		default:
 			if idx := u.offset + r - 1; idx < len(u.rows) {
 				left = u.leftLine(idx, lw)
+			} else {
+				left = padEnd("", lw)
 			}
 		}
 		b.WriteString(left)
@@ -310,7 +312,7 @@ func (u *UI) headerLine(lw int) string {
 	meta := fmt.Sprintf("%8s %8s %4s", "CLOSURE", "OWN", "DEPS")
 	name := " NAME"
 	if lw < runeLen(name)+runeLen(meta)+1 {
-		return bold + truncate("nixview", lw) + reset
+		return bold + padEnd(truncate("nixview", lw), lw) + reset
 	}
 	return bold + padEnd(name, lw-runeLen(meta)) + meta + reset
 }
@@ -319,7 +321,7 @@ func (u *UI) leftLine(idx, lw int) string {
 	row := u.rows[idx]
 	info := u.g.Get(row.Node.Path)
 	if info == nil {
-		return ""
+		return padEnd("", lw)
 	}
 	m := row.Node.Marker(u.g)
 	if m != "" {
@@ -332,7 +334,7 @@ func (u *UI) leftLine(idx, lw int) string {
 	meta := fmt.Sprintf("%8s %8s %4s", cl, own, deps)
 	nameW := lw - runeLen(meta)
 	if nameW < 1 {
-		return truncate(name, lw)
+		return padEnd(truncate(name, lw), lw)
 	}
 	if row.Node == u.sel {
 		return rev + padEnd(name, nameW) + meta + reset
