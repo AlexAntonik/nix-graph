@@ -111,3 +111,33 @@ func TestBarUnderLastCorner(t *testing.T) {
 		t.Errorf("grandchild under last node prefix = %q, want spaces", p)
 	}
 }
+
+func TestStickyPath(t *testing.T) {
+	g := testGraph()
+	g.info["/s/small/kid"] = &Info{NarSize: 3}
+	g.info["/s/small/kid/grand"] = &Info{NarSize: 4}
+	g.info["/s/small"].References = []string{"/s/small", "/s/small/kid"}
+	g.info["/s/small/kid"].References = []string{"/s/small/kid", "/s/small/kid/grand"}
+	g.countDirect()
+
+	root := NewTree(g)
+	small := root.Children[1]
+	small.Toggle(g)
+	small.Children[0].Toggle(g)
+	rows := root.Visible()
+	// order: root(0), big(1), small(2), kid(3), grand(4)
+	u := &UI{g: g, tree: root, rows: rows, sel: rows[len(rows)-1].Node}
+
+	if got := u.sticky(0); len(got) != 0 {
+		t.Errorf("sticky(0) = %d rows, want 0", len(got))
+	}
+	if got := u.sticky(1); len(got) != 1 || got[0].Node != root {
+		t.Errorf("sticky(1) = %d rows, want [root]", len(got))
+	}
+	if got := u.sticky(3); len(got) != 2 || got[0].Node != root || got[1].Node != small {
+		t.Errorf("sticky(3) = %d rows, want [root small]", len(got))
+	}
+	if got := u.sticky(len(rows)); len(got) != 3 {
+		t.Errorf("sticky(all) = %d rows, want [root small kid]", len(got))
+	}
+}

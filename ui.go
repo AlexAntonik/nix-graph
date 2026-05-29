@@ -258,7 +258,18 @@ func (u *UI) render() {
 	if u.offset < 0 {
 		u.offset = 0
 	}
+	for u.offset < selIdx {
+		st := u.sticky(u.offset)
+		if len(st) > u.viewH()-1 || u.offset+u.viewH()-1-len(st) >= selIdx {
+			break
+		}
+		u.offset++
+	}
 
+	sticky := u.sticky(u.offset)
+	if max := u.viewH() - 1; len(sticky) > max {
+		sticky = sticky[len(sticky)-max:]
+	}
 	right := u.rightPanel(rw, u.viewH())
 	var b strings.Builder
 	if u.clearNext {
@@ -272,9 +283,11 @@ func (u *UI) render() {
 		switch {
 		case r == 0:
 			left = u.headerLine(lw)
+		case r-1 < len(sticky):
+			left = u.leftLine(sticky[r-1], lw)
 		default:
-			if idx := u.offset + r - 1; idx < len(u.rows) {
-				left = u.leftLine(idx, lw)
+			if idx := u.offset + r - 1 - len(sticky); idx < len(u.rows) {
+				left = u.leftLine(u.rows[idx], lw)
 			} else {
 				left = padEnd("", lw)
 			}
@@ -317,8 +330,23 @@ func (u *UI) headerLine(lw int) string {
 	return bold + padEnd(name, lw-runeLen(meta)) + meta + reset
 }
 
-func (u *UI) leftLine(idx, lw int) string {
-	row := u.rows[idx]
+func (u *UI) sticky(offset int) []Row {
+	var chain []*Node
+	for n := u.sel.Parent; n != nil; n = n.Parent {
+		chain = append(chain, n)
+	}
+	var rows []Row
+	for i := len(chain) - 1; i >= 0; i-- {
+		idx := u.indexOf(chain[i])
+		if idx < 0 || idx >= offset {
+			break
+		}
+		rows = append(rows, u.rows[idx])
+	}
+	return rows
+}
+
+func (u *UI) leftLine(row Row, lw int) string {
 	info := u.g.Get(row.Node.Path)
 	if info == nil {
 		return padEnd("", lw)
