@@ -257,6 +257,26 @@ func TestLeftLineWidth(t *testing.T) {
 	}
 }
 
+func TestHeaderLabels(t *testing.T) {
+	g := testGraph()
+	u := NewUI(g)
+	u.sortKey = sortNone
+	h := stripANSI(u.headerLine(43))
+	if !strings.HasSuffix(h, "  CLOSURE      OWN   DEPS") {
+		t.Errorf("header = %q", h)
+	}
+	u.setSort(sortClosure)
+	h = stripANSI(u.headerLine(43))
+	if !strings.Contains(h, "↓CLOSURE") {
+		t.Errorf("header with arrow = %q", h)
+	}
+	u.setSort(sortDeps)
+	h = stripANSI(u.headerLine(43))
+	if !strings.Contains(h, "↓DEPS") {
+		t.Errorf("header with deps arrow = %q", h)
+	}
+}
+
 func TestSortKeepsCursor(t *testing.T) {
 	g := testGraph()
 	g.info["/s/zzz"] = &Info{NarSize: 300}

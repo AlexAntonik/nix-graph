@@ -442,17 +442,24 @@ func (l headerLabel) pad(w int) string {
 	return l.s
 }
 
+func (l headerLabel) padStart(w int) string {
+	if pad := w - l.w; pad > 0 {
+		return strings.Repeat(" ", pad) + l.s
+	}
+	return l.s
+}
+
 func (u *UI) colLabel(text, letter string, key int) headerLabel {
 	i := strings.Index(text, letter)
 	s := text[:i] + cyan + letter + reset + bold + text[i+1:]
 	w := runeLen(text)
 	if u.sortKey == key {
-		arrow := " ↑"
+		arrow := "↑"
 		if u.sortDesc {
-			arrow = " ↓"
+			arrow = "↓"
 		}
-		s += cyan + arrow + reset + bold
-		w += 2
+		s = cyan + arrow + reset + bold + s
+		w++
 	}
 	return headerLabel{s, w}
 }
@@ -462,11 +469,11 @@ func (u *UI) headerLine(lw int) string {
 	cl := u.colLabel("CLOSURE", "C", sortClosure)
 	own := u.colLabel("OWN", "O", sortOwn)
 	deps := u.colLabel("DEPS", "D", sortDeps)
-	name := u.colLabel(" NAME", "N", sortName)
+	name := u.colLabel("NAME", "N", sortName)
 	if lw < name.w+metaW+1 {
 		return bold + padEnd(truncate("nixview", lw), lw) + reset
 	}
-	meta := cl.pad(9) + " " + own.pad(8) + " " + deps.pad(6)
+	meta := cl.padStart(9) + " " + own.padStart(8) + " " + deps.padStart(6)
 	return bold + name.pad(lw-metaW) + meta + reset
 }
 
