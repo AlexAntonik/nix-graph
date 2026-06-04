@@ -32,6 +32,16 @@ func TestShortName(t *testing.T) {
 	}
 }
 
+func TestPkgName(t *testing.T) {
+	path := storePrefix + "0123456789abcdefghij0123456789ab-bash-5.2-p103"
+	if got := PkgName(path); got != "bash-5.2-p103" {
+		t.Errorf("PkgName = %q, want %q", got, "bash-5.2-p103")
+	}
+	if got := PkgName("/etc/hosts"); got != "/etc/hosts" {
+		t.Errorf("PkgName non-store = %q, want unchanged", got)
+	}
+}
+
 func TestPadEndTruncate(t *testing.T) {
 	tests := []struct {
 		s    string

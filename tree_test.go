@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestTreeExpandAndPrune(t *testing.T) {
 	g := testGraph()
@@ -139,5 +142,140 @@ func TestStickyPath(t *testing.T) {
 	}
 	if got := u.sticky(len(rows)); len(got) != 3 {
 		t.Errorf("sticky(all) = %d rows, want [root small kid]", len(got))
+	}
+}
+
+func TestUISort(t *testing.T) {
+	g := testGraph()
+	g.info["/s/zzz"] = &Info{NarSize: 300}
+	g.info["/s/mmm"] = &Info{NarSize: 200}
+	g.info["/s/aaa"] = &Info{NarSize: 100}
+	g.info["/s/root"].References = []string{"/s/big", "/s/small", "/s/zzz", "/s/mmm", "/s/aaa"}
+	g.info["/s/aaa"].References = []string{"/s/mmm", "/s/zzz"}
+	g.info["/s/aaa"].Direct = 3
+	g.countDirect()
+
+	u := NewUI(g)
+	paths := func() []string {
+		out := make([]string, 0, len(u.tree.Children))
+		for _, c := range u.tree.Children {
+			out = append(out, c.Path)
+		}
+		return out
+	}
+	eq := func(got, want []string) bool {
+		if len(got) != len(want) {
+			return false
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				return false
+			}
+		}
+		return true
+	}
+
+	if u.sortKey != sortOwn || !u.sortDesc {
+		t.Fatalf("initial sort state = %d/%v, want sortOwn/desc", u.sortKey, u.sortDesc)
+	}
+	natural := []string{"/s/big", "/s/zzz", "/s/mmm", "/s/aaa", "/s/small"}
+	if got := paths(); !eq(got, natural) {
+		t.Errorf("initial order = %v, want %v", got, natural)
+	}
+
+	u.setSort(sortName)
+	if got := paths(); !eq(got, []string{"/s/zzz", "/s/small", "/s/mmm", "/s/big", "/s/aaa"}) {
+		t.Errorf("name desc = %v", got)
+	}
+	u.setSort(sortName)
+	if got := paths(); !eq(got, []string{"/s/aaa", "/s/big", "/s/mmm", "/s/small", "/s/zzz"}) {
+		t.Errorf("name asc = %v", got)
+	}
+	u.setSort(sortName)
+	if u.sortKey != sortNone {
+		t.Errorf("third press: sortKey = %d, want sortNone", u.sortKey)
+	}
+	if got := paths(); !eq(got, natural) {
+		t.Errorf("off order = %v, want %v", got, natural)
+	}
+
+	u.setSort(sortDeps)
+	if got := paths(); !eq(got, []string{"/s/aaa", "/s/big", "/s/mmm", "/s/small", "/s/zzz"}) {
+		t.Errorf("deps desc = %v", got)
+	}
+	u.setSort(sortDeps)
+	if got := paths(); !eq(got, []string{"/s/mmm", "/s/small", "/s/zzz", "/s/big", "/s/aaa"}) {
+		t.Errorf("deps asc = %v", got)
+	}
+
+	u.setSort(sortOwn)
+	if u.sortKey != sortOwn || !u.sortDesc {
+		t.Errorf("switching key resets to desc, got %d/%v", u.sortKey, u.sortDesc)
+	}
+	u.setSort(sortOwn)
+	if u.sortDesc || u.sortKey != sortOwn {
+		t.Errorf("own cycle state = %d/%v, want sortOwn/asc", u.sortKey, u.sortDesc)
+	}
+
+	u.setSort(sortClosure)
+	if got := paths(); !eq(got, []string{"/s/big", "/s/aaa", "/s/zzz", "/s/mmm", "/s/small"}) {
+		t.Errorf("closure desc = %v", got)
+	}
+	u.setSort(sortClosure)
+	if got := paths(); !eq(got, []string{"/s/small", "/s/mmm", "/s/zzz", "/s/aaa", "/s/big"}) {
+		t.Errorf("closure asc = %v", got)
+	}
+}
+
+func stripANSI(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\x1b' {
+			for i < len(s) && s[i] != 'm' {
+				i++
+			}
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+func TestLeftLineWidth(t *testing.T) {
+	g := testGraph()
+	u := NewUI(g)
+	rows := u.tree.Visible()
+	const lw = 43
+	sel := runeLen(stripANSI(u.leftLine(rows[1], lw)))
+	other := runeLen(stripANSI(u.leftLine(rows[2], lw)))
+	if sel != lw || other != lw {
+		t.Errorf("row widths sel=%d other=%d, want %d/%d", sel, other, lw, lw)
+	}
+	header := runeLen(stripANSI(u.headerLine(lw)))
+	if header != lw {
+		t.Errorf("header width = %d, want %d", header, lw)
+	}
+}
+
+func TestSortKeepsCursor(t *testing.T) {
+	g := testGraph()
+	g.info["/s/zzz"] = &Info{NarSize: 300}
+	g.info["/s/mmm"] = &Info{NarSize: 200}
+	g.info["/s/aaa"] = &Info{NarSize: 100}
+	g.info["/s/root"].References = []string{"/s/big", "/s/small", "/s/zzz", "/s/mmm", "/s/aaa"}
+	g.countDirect()
+
+	u := NewUI(g)
+	u.rows = u.tree.Visible()
+	u.sel = u.rows[5].Node // natural order row 5 = /s/small
+	u.setSort(sortName)
+	if u.rows[5].Node.Path != "/s/aaa" {
+		t.Fatalf("row 5 after name sort = %s, want /s/aaa", u.rows[5].Node.Path)
+	}
+	if u.sel != u.rows[5].Node {
+		t.Errorf("sel = %s, want cursor to stay on row 5 (%s)", u.sel.Path, u.rows[5].Node.Path)
+	}
+	if u.sel.Path != "/s/aaa" {
+		t.Errorf("sel = %s, want /s/aaa", u.sel.Path)
 	}
 }

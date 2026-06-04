@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +33,14 @@ const (
 	rev  = "\x1b[7m"
 )
 
+const (
+	sortNone = iota
+	sortOwn
+	sortDeps
+	sortName
+	sortClosure
+)
+
 type UI struct {
 	g         *Graph
 	tree      *Node
@@ -44,6 +53,8 @@ type UI struct {
 	pending   map[string]bool
 	redraw    chan struct{}
 	clearNext bool
+	sortKey   int
+	sortDesc  bool
 }
 
 func NewUI(g *Graph) *UI {
@@ -58,6 +69,8 @@ func NewUI(g *Graph) *UI {
 		pending:   map[string]bool{},
 		redraw:    make(chan struct{}, 1),
 		clearNext: true,
+		sortKey:   sortOwn,
+		sortDesc:  true,
 	}
 }
 
@@ -136,6 +149,7 @@ func (u *UI) handle(buf []byte) bool {
 			}
 		case b == ' ' || b == '\r' || b == '\n':
 			u.sel.Toggle(u.g)
+			u.resort()
 		case b == 'j':
 			u.move(1)
 		case b == 'k':
@@ -148,6 +162,14 @@ func (u *UI) handle(buf []byte) bool {
 			u.jump(0)
 		case b == 'G':
 			u.jump(len(u.rows) - 1)
+		case b == 'o':
+			u.setSort(sortOwn)
+		case b == 'd':
+			u.setSort(sortDeps)
+		case b == 'n':
+			u.setSort(sortName)
+		case b == 'c':
+			u.setSort(sortClosure)
 		}
 	}
 	return false
@@ -238,6 +260,93 @@ func (u *UI) indexOf(n *Node) int {
 	return -1
 }
 
+func (u *UI) setSort(k int) {
+	idx := u.indexOf(u.sel)
+	if u.sortKey != k {
+		u.sortKey = k
+		u.sortDesc = true
+	} else if u.sortDesc {
+		u.sortDesc = false
+	} else {
+		u.sortKey = sortNone
+	}
+	u.resort()
+	u.rows = u.tree.Visible()
+	if idx >= 0 && idx < len(u.rows) {
+		u.sel = u.rows[idx].Node
+	}
+}
+
+func (u *UI) resort() {
+	var walk func(*Node)
+	walk = func(n *Node) {
+		if !n.Loaded {
+			return
+		}
+		children := n.Children
+		sort.SliceStable(children, func(i, j int) bool {
+			return u.less(children[i], children[j])
+		})
+		for _, c := range children {
+			walk(c)
+		}
+	}
+	walk(u.tree)
+}
+
+func (u *UI) less(a, b *Node) bool {
+	ia, ib := u.g.Get(a.Path), u.g.Get(b.Path)
+	switch u.sortKey {
+	case sortNone:
+		sa, sb := infoSize(ia), infoSize(ib)
+		if sa != sb {
+			return sa > sb
+		}
+	case sortDeps:
+		da, db := infoDirect(ia), infoDirect(ib)
+		if da != db {
+			return u.ord(da > db)
+		}
+	case sortOwn:
+		sa, sb := infoSize(ia), infoSize(ib)
+		if sa != sb {
+			return u.ord(sa > sb)
+		}
+	case sortName:
+		pa, pb := PkgName(a.Path), PkgName(b.Path)
+		if pa != pb {
+			return u.ord(pa > pb)
+		}
+	case sortClosure:
+		ca, cb := u.g.Closure(a.Path).Bytes, u.g.Closure(b.Path).Bytes
+		if ca != cb {
+			return u.ord(ca > cb)
+		}
+	}
+	return Name(a.Path) < Name(b.Path)
+}
+
+func (u *UI) ord(greater bool) bool {
+	if u.sortDesc {
+		return greater
+	}
+	return !greater
+}
+
+func infoDirect(i *Info) int {
+	if i == nil {
+		return 0
+	}
+	return i.Direct
+}
+
+func infoSize(i *Info) uint64 {
+	if i == nil {
+		return 0
+	}
+	return i.NarSize
+}
+
 func (u *UI) render() {
 	u.rows = u.tree.Visible()
 	if u.indexOf(u.sel) < 0 {
@@ -321,13 +430,44 @@ func rightWidth(w int) int {
 	}
 }
 
+type headerLabel struct {
+	s string
+	w int
+}
+
+func (l headerLabel) pad(w int) string {
+	if pad := w - l.w; pad > 0 {
+		return l.s + strings.Repeat(" ", pad)
+	}
+	return l.s
+}
+
+func (u *UI) colLabel(text, letter string, key int) headerLabel {
+	i := strings.Index(text, letter)
+	s := text[:i] + cyan + letter + reset + bold + text[i+1:]
+	w := runeLen(text)
+	if u.sortKey == key {
+		arrow := " ↑"
+		if u.sortDesc {
+			arrow = " ↓"
+		}
+		s += cyan + arrow + reset + bold
+		w += 2
+	}
+	return headerLabel{s, w}
+}
+
 func (u *UI) headerLine(lw int) string {
-	meta := fmt.Sprintf("%8s %8s %4s", "CLOSURE", "OWN", "DEPS")
-	name := " NAME"
-	if lw < runeLen(name)+runeLen(meta)+1 {
+	const metaW = 9 + 1 + 8 + 1 + 6
+	cl := u.colLabel("CLOSURE", "C", sortClosure)
+	own := u.colLabel("OWN", "O", sortOwn)
+	deps := u.colLabel("DEPS", "D", sortDeps)
+	name := u.colLabel(" NAME", "N", sortName)
+	if lw < name.w+metaW+1 {
 		return bold + padEnd(truncate("nixview", lw), lw) + reset
 	}
-	return bold + padEnd(name, lw-runeLen(meta)) + meta + reset
+	meta := cl.pad(9) + " " + own.pad(8) + " " + deps.pad(6)
+	return bold + name.pad(lw-metaW) + meta + reset
 }
 
 func (u *UI) sticky(offset int) []Row {
@@ -359,7 +499,7 @@ func (u *UI) leftLine(row Row, lw int) string {
 	name := lead + m + ShortName(row.Node.Path)
 	cl, own := HumanSize(u.g.Closure(row.Node.Path).Bytes), HumanSize(info.NarSize)
 	deps := strconv.Itoa(info.Direct)
-	meta := fmt.Sprintf("%8s %8s %4s", cl, own, deps)
+	meta := fmt.Sprintf("%9s %8s %6s", cl, own, deps)
 	nameW := lw - runeLen(meta)
 	if nameW < 1 {
 		return padEnd(truncate(name, lw), lw)
@@ -376,9 +516,9 @@ func (u *UI) leftLine(row Row, lw int) string {
 	}
 	body := padEnd(ShortName(row.Node.Path), nameW-runeLen(lead)-runeLen(m))
 	return dim + lead + reset + markColor + m + reset + body +
-		cyan + fmt.Sprintf("%8s", cl) + reset + " " +
+		cyan + fmt.Sprintf("%9s", cl) + reset + " " +
 		blue + fmt.Sprintf("%8s", own) + reset + " " +
-		yell + fmt.Sprintf("%4s", deps) + reset
+		yell + fmt.Sprintf("%6s", deps) + reset
 }
 
 func (u *UI) statusLine() string {
