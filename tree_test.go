@@ -227,6 +227,113 @@ func TestUISort(t *testing.T) {
 	}
 }
 
+func rowPaths(rows []Row) []string {
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, r.Node.Path)
+	}
+	return out
+}
+
+func eqPaths(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestFilterRows(t *testing.T) {
+	g := testGraph()
+	g.info["/s/small/kid"] = &Info{NarSize: 3}
+	g.info["/s/small/kid2"] = &Info{NarSize: 4}
+	g.info["/s/small"].References = []string{"/s/small", "/s/small/kid", "/s/small/kid2"}
+	g.countDirect()
+
+	root := NewTree(g)
+	root.Children[1].Toggle(g)
+	match := func(n *Node) bool { return strings.Contains(PkgName(n.Path), "kid") }
+
+	rows := root.visibleRows(match)
+	want := []string{"/s/root", "/s/small", "/s/small/kid2", "/s/small/kid"}
+	if got := rowPaths(rows); !eqPaths(got, want) {
+		t.Fatalf("filtered rows = %v, want %v", got, want)
+	}
+	if rows[3].Conn != " └─ " {
+		t.Errorf("conn after filter = %q, want last-corner", rows[3].Conn)
+	}
+	if got := rowPaths(root.visibleRows(nil)); len(got) != 5 {
+		t.Errorf("unfiltered rows = %v, want 5", got)
+	}
+}
+
+func TestUIFilter(t *testing.T) {
+	g := testGraph()
+	g.info["/s/small/kid"] = &Info{NarSize: 3}
+	g.info["/s/small"].References = []string{"/s/small", "/s/small/kid"}
+	g.countDirect()
+
+	u := NewUI(g)
+	if u.matcher() != nil {
+		t.Fatal("matcher should be nil without filter")
+	}
+	u.tree.Children[1].Toggle(g)
+	unfiltered := []string{"/s/root", "/s/big", "/s/small", "/s/small/kid"}
+
+	u.handle([]byte("f"))
+	if !u.filterMode {
+		t.Fatal("f should enter filter mode")
+	}
+	u.handle([]byte("kid"))
+	if u.filter != "kid" || !u.filterMode {
+		t.Fatalf("typing broken: %q mode=%v", u.filter, u.filterMode)
+	}
+	if got := rowPaths(u.rows); !eqPaths(got, []string{"/s/root", "/s/small", "/s/small/kid"}) {
+		t.Errorf("live filtered rows = %v", got)
+	}
+	if h := stripANSI(u.headerLine(60)); !strings.Contains(h, "filter:kid▌") {
+		t.Errorf("header typing = %q", h)
+	}
+
+	u.handle([]byte("q"))
+	if u.filter != "kidq" {
+		t.Errorf("q in filter mode = %q, want typed", u.filter)
+	}
+	u.handle([]byte{0x7f})
+	if u.filter != "kid" {
+		t.Errorf("backspace = %q, want kid", u.filter)
+	}
+
+	u.handle([]byte{'\r'})
+	if u.filterMode || u.filter != "kid" {
+		t.Errorf("enter lock state = mode=%v filter=%q", u.filterMode, u.filter)
+	}
+	if got := rowPaths(u.rows); !eqPaths(got, []string{"/s/root", "/s/small", "/s/small/kid"}) {
+		t.Errorf("locked rows = %v", got)
+	}
+	if h := stripANSI(u.headerLine(60)); !strings.Contains(h, "filter:kid") || strings.Contains(h, "▌") {
+		t.Errorf("header locked = %q", h)
+	}
+
+	u.handle([]byte("f"))
+	if !u.filterMode || u.filter != "kid" {
+		t.Errorf("re-enter = mode=%v filter=%q, want editing kept text", u.filterMode, u.filter)
+	}
+	if u.handle([]byte{0x1b}) {
+		t.Error("esc in filter mode must not quit")
+	}
+	if u.filterMode || u.filter != "" {
+		t.Errorf("esc clear = mode=%v filter=%q", u.filterMode, u.filter)
+	}
+	if got := rowPaths(u.rows); !eqPaths(got, unfiltered) {
+		t.Errorf("cleared rows = %v, want %v", got, unfiltered)
+	}
+}
+
 func stripANSI(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {

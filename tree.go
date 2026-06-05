@@ -71,6 +71,10 @@ type Row struct {
 }
 
 func (n *Node) Visible() []Row {
+	return n.visibleRows(nil)
+}
+
+func (n *Node) visibleRows(match func(*Node) bool) []Row {
 	rows := []Row{{Node: n}}
 	if !n.Expanded || !n.Loaded {
 		return rows
@@ -85,8 +89,9 @@ func (n *Node) Visible() []Row {
 		if !node.Expanded || !node.Loaded {
 			return
 		}
-		for i, child := range node.Children {
-			lastChild := i == len(node.Children)-1
+		kept := matchedChildren(node, match)
+		for i, child := range kept {
+			lastChild := i == len(kept)-1
 			childPrefix := prefix
 			if depth > 0 {
 				if last {
@@ -98,8 +103,34 @@ func (n *Node) Visible() []Row {
 			walk(child, childPrefix, depth+1, lastChild)
 		}
 	}
-	for i, child := range n.Children {
-		walk(child, "", 1, i == len(n.Children)-1)
+	kept := matchedChildren(n, match)
+	for i, child := range kept {
+		walk(child, "", 1, i == len(kept)-1)
 	}
 	return rows
+}
+
+func matchedChildren(n *Node, match func(*Node) bool) []*Node {
+	if match == nil {
+		return n.Children
+	}
+	kept := make([]*Node, 0, len(n.Children))
+	for _, c := range n.Children {
+		if match(c) || c.hasMatchDesc(match) {
+			kept = append(kept, c)
+		}
+	}
+	return kept
+}
+
+func (n *Node) hasMatchDesc(match func(*Node) bool) bool {
+	if !n.Expanded || !n.Loaded {
+		return false
+	}
+	for _, c := range n.Children {
+		if match(c) || c.hasMatchDesc(match) {
+			return true
+		}
+	}
+	return false
 }

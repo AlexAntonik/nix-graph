@@ -13,6 +13,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -42,19 +43,21 @@ const (
 )
 
 type UI struct {
-	g         *Graph
-	tree      *Node
-	sel       *Node
-	rows      []Row
-	offset    int
-	w, h      int
-	mu        sync.Mutex
-	contents  map[string]Contents
-	pending   map[string]bool
-	redraw    chan struct{}
-	clearNext bool
-	sortKey   int
-	sortDesc  bool
+	g          *Graph
+	tree       *Node
+	sel        *Node
+	rows       []Row
+	offset     int
+	w, h       int
+	mu         sync.Mutex
+	contents   map[string]Contents
+	pending    map[string]bool
+	redraw     chan struct{}
+	clearNext  bool
+	sortKey    int
+	sortDesc   bool
+	filter     string
+	filterMode bool
 }
 
 func NewUI(g *Graph) *UI {
@@ -136,9 +139,43 @@ func readKeys(ch chan<- []byte) {
 	}
 }
 
+func (u *UI) matcher() func(*Node) bool {
+	if u.filter == "" {
+		return nil
+	}
+	q := strings.ToLower(u.filter)
+	return func(n *Node) bool {
+		return strings.Contains(strings.ToLower(PkgName(n.Path)), q)
+	}
+}
+
 func (u *UI) handle(buf []byte) bool {
-	u.rows = u.tree.Visible()
+	u.rows = u.tree.visibleRows(u.matcher())
 	for i := 0; i < len(buf); i++ {
+		if u.filterMode {
+			switch b := buf[i]; {
+			case b == 3:
+				return true
+			case b == 0x1b:
+				if i+2 < len(buf) && (buf[i+1] == '[' || buf[i+1] == 'O') {
+					i += 2
+				} else {
+					u.filter, u.filterMode = "", false
+				}
+			case b == '\r' || b == '\n':
+				u.filterMode = false
+			case b == 0x7f || b == 8:
+				if r := []rune(u.filter); len(r) > 0 {
+					u.filter = string(r[:len(r)-1])
+				}
+			default:
+				if rn, sz := utf8.DecodeRune(buf[i:]); (rn != utf8.RuneError || sz > 1) && rn >= 0x20 {
+					u.filter += string(rn)
+					i += sz - 1
+				}
+			}
+			continue
+		}
 		switch b := buf[i]; {
 		case b == 'q' || b == 'Q' || b == 3:
 			return true
@@ -170,8 +207,11 @@ func (u *UI) handle(buf []byte) bool {
 			u.setSort(sortName)
 		case b == 'c':
 			u.setSort(sortClosure)
+		case b == 'f' || b == 'F':
+			u.filterMode = true
 		}
 	}
+	u.rows = u.tree.visibleRows(u.matcher())
 	return false
 }
 
@@ -348,7 +388,7 @@ func infoSize(i *Info) uint64 {
 }
 
 func (u *UI) render() {
-	u.rows = u.tree.Visible()
+	u.rows = u.tree.visibleRows(u.matcher())
 	if u.indexOf(u.sel) < 0 {
 		u.sel = u.tree
 	}
@@ -473,8 +513,33 @@ func (u *UI) headerLine(lw int) string {
 	if lw < name.w+metaW+1 {
 		return bold + padEnd(truncate("nixview", lw), lw) + reset
 	}
+	fw, fs := 0, ""
+	if u.filterMode || u.filter != "" {
+		const lbl = " filter:"
+		cur := ""
+		if u.filterMode {
+			cur = "▌"
+		}
+		avail := lw - metaW - name.w - runeLen(lbl) - 1
+		if avail < 1 {
+			avail = 1
+		}
+		q := truncate(u.filter, avail)
+		fs = cyan + lbl + reset + bold + q
+		if cur != "" {
+			fs += cyan + cur + reset + bold
+		}
+		fw = runeLen(lbl) + runeLen(q) + runeLen(cur)
+	}
 	meta := cl.padStart(9) + " " + own.padStart(8) + " " + deps.padStart(6)
-	return bold + name.pad(lw-metaW) + meta + reset
+	if fw == 0 {
+		return bold + name.pad(lw-metaW) + meta + reset
+	}
+	pad := lw - metaW - fw - name.w
+	if pad < 1 {
+		pad = 1
+	}
+	return bold + name.s + fs + strings.Repeat(" ", pad) + meta + reset
 }
 
 func (u *UI) sticky(offset int) []Row {
@@ -529,8 +594,12 @@ func (u *UI) leftLine(row Row, lw int) string {
 }
 
 func (u *UI) statusLine() string {
-	s := fmt.Sprintf(" %s │ %d paths │ closure %s │ j/k move · space toggle · h/l fold/drill · g/G ends · q quit",
-		ShortName(u.g.Root), u.g.Size(), HumanSize(u.g.Closure(u.g.Root).Bytes))
+	hints := "j/k move · space toggle · h/l fold/drill · g/G ends · f filter · q quit"
+	if u.filterMode {
+		hints = "type to filter · enter lock · esc clear"
+	}
+	s := fmt.Sprintf(" %s │ %d paths │ closure %s │ %s",
+		ShortName(u.g.Root), u.g.Size(), HumanSize(u.g.Closure(u.g.Root).Bytes), hints)
 	return rev + truncate(s, u.w) + reset
 }
 
