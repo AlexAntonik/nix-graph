@@ -27,14 +27,6 @@ func Name(path string) string {
 	return rest
 }
 
-func Hash(path string) string {
-	rest, ok := trimStore(path)
-	if !ok || len(rest) < hashLen {
-		return ""
-	}
-	return rest[:hashLen]
-}
-
 func PkgName(path string) string {
 	rest, ok := trimStore(path)
 	if !ok || len(rest) <= hashLen {

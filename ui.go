@@ -10,9 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
-	"time"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -23,7 +21,6 @@ const (
 	hideCur  = "\x1b[?25l"
 	showCur  = "\x1b[?25h"
 	clearScr = "\x1b[H\x1b[J"
-	eraseEol = "\x1b[K"
 	reset    = "\x1b[0m"
 
 	dim  = "\x1b[90m"
@@ -49,10 +46,6 @@ type UI struct {
 	rows       []Row
 	offset     int
 	w, h       int
-	mu         sync.Mutex
-	contents   map[string]Contents
-	pending    map[string]bool
-	redraw     chan struct{}
 	clearNext  bool
 	sortKey    int
 	sortDesc   bool
@@ -68,9 +61,6 @@ func NewUI(g *Graph) *UI {
 		sel:       tree,
 		w:         80,
 		h:         24,
-		contents:  map[string]Contents{},
-		pending:   map[string]bool{},
-		redraw:    make(chan struct{}, 1),
 		clearNext: true,
 		sortKey:   sortOwn,
 		sortDesc:  true,
@@ -118,7 +108,6 @@ func (u *UI) loop() error {
 				u.w, u.h = w, h
 			}
 			u.clearNext = true
-		case <-u.redraw:
 		}
 	}
 }
@@ -392,11 +381,7 @@ func (u *UI) render() {
 	if u.indexOf(u.sel) < 0 {
 		u.sel = u.tree
 	}
-	rw := rightWidth(u.w)
-	lw := u.w - rw
-	if rw > 0 {
-		lw--
-	}
+	lw := u.w
 	selIdx := u.indexOf(u.sel)
 	if selIdx < u.offset {
 		u.offset = selIdx
@@ -419,7 +404,6 @@ func (u *UI) render() {
 	if max := u.viewH() - 1; len(sticky) > max {
 		sticky = sticky[len(sticky)-max:]
 	}
-	right := u.rightPanel(rw, u.viewH())
 	var b strings.Builder
 	if u.clearNext {
 		b.WriteString(clearScr)
@@ -442,14 +426,6 @@ func (u *UI) render() {
 			}
 		}
 		b.WriteString(left)
-		b.WriteString(eraseEol)
-		if rw > 0 {
-			b.WriteString(dim + "│" + reset)
-			if line := r - 1; line >= 0 && line < len(right) {
-				b.WriteString(right[line])
-			}
-			b.WriteString(eraseEol)
-		}
 		if r < u.h-2 {
 			b.WriteString("\r\n")
 		}
@@ -457,17 +433,6 @@ func (u *UI) render() {
 	b.WriteString("\r\n")
 	b.WriteString(u.statusLine())
 	os.Stdout.WriteString(b.String())
-}
-
-func rightWidth(w int) int {
-	switch {
-	case w < 70:
-		return 0
-	case w < 110:
-		return 36
-	default:
-		return 48
-	}
 }
 
 type headerLabel struct {
@@ -600,90 +565,7 @@ func (u *UI) statusLine() string {
 	}
 	s := fmt.Sprintf(" %s │ %d paths │ closure %s │ %s",
 		ShortName(u.g.Root), u.g.Size(), HumanSize(u.g.Closure(u.g.Root).Bytes), hints)
-	return rev + truncate(s, u.w) + reset
-}
-
-func (u *UI) rightPanel(w, maxRows int) []string {
-	if w < 20 || maxRows < 1 {
-		return nil
-	}
-	info := u.g.Get(u.sel.Path)
-	if info == nil {
-		return nil
-	}
-	path := u.sel.Path
-	u.mu.Lock()
-	c, have := u.contents[path]
-	busy := u.pending[path]
-	if !have && !busy {
-		u.pending[path] = true
-		busy = true
-		go func() {
-			res, err := Inspect(path)
-			u.mu.Lock()
-			if err == nil {
-				u.contents[path] = res
-			}
-			delete(u.pending, path)
-			u.mu.Unlock()
-			select {
-			case u.redraw <- struct{}{}:
-			default:
-			}
-		}()
-	}
-	u.mu.Unlock()
-
-	var out []string
-	add := func(s string) {
-		if len(out) < maxRows {
-			out = append(out, s)
-		}
-	}
-	kv := func(k, v string) {
-		add(dim + " " + padEnd(k, 12) + reset + truncate(v, w-14))
-	}
-	add(bold + " " + truncate(ShortName(u.sel.Path), w-1) + reset)
-	kv("name", Name(u.sel.Path))
-	kv("hash", Hash(u.sel.Path))
-	kv("path", u.sel.Path)
-	add(dim + strings.Repeat("─", w) + reset)
-	cl := u.g.Closure(u.sel.Path)
-	kv("own size", HumanSize(info.NarSize))
-	kv("closure", fmt.Sprintf("%s / %d paths", HumanSize(cl.Bytes), cl.Paths))
-	kv("deps direct", strconv.Itoa(info.Direct))
-	kv("deps total", strconv.Itoa(cl.Paths-1))
-	if info.Deriver != "" {
-		kv("deriver", Name(info.Deriver))
-	}
-	if info.RegistrationTime > 0 {
-		kv("registered", time.Unix(info.RegistrationTime, 0).Format("2006-01-02"))
-	}
-	add(dim + strings.Repeat("─", w) + reset)
-	switch {
-	case have:
-		add(bold + fmt.Sprintf(" contents: %d dirs %d files %d exec", c.Dirs, c.Files, c.Execs) + reset)
-		for _, e := range c.Entries {
-			if len(out) >= maxRows {
-				break
-			}
-			nm := truncate(e.Name, w-13)
-			if e.Dir {
-				nm += "/"
-			}
-			style := reset
-			switch {
-			case e.Dir:
-				style = cyan
-			case e.Exec:
-				style = bold
-			}
-			add(style + padEnd("  "+nm, w-9) + reset + dim + fmt.Sprintf("%8s", HumanSize(e.Size)) + reset)
-		}
-	case busy:
-		add(dim + " inspecting contents…" + reset)
-	}
-	return out
+	return rev + padEnd(s, u.w) + reset
 }
 
 func makeRaw(fd int) (*syscall.Termios, error) {
