@@ -51,6 +51,7 @@ type UI struct {
 	sortDesc   bool
 	filter     string
 	filterMode bool
+	helpMode   bool
 }
 
 func NewUI(g *Graph) *UI {
@@ -139,6 +140,15 @@ func (u *UI) matcher() func(*Node) bool {
 }
 
 func (u *UI) handle(buf []byte) bool {
+	if u.helpMode {
+		u.helpMode = false
+		for i := 0; i < len(buf); i++ {
+			if buf[i] == 3 {
+				return true
+			}
+		}
+		return false
+	}
 	u.rows = u.tree.visibleRows(u.matcher())
 	for i := 0; i < len(buf); i++ {
 		if u.filterMode {
@@ -198,6 +208,8 @@ func (u *UI) handle(buf []byte) bool {
 			u.setSort(sortClosure)
 		case b == 'f' || b == 'F':
 			u.filterMode = true
+		case b == '?':
+			u.helpMode = true
 		}
 	}
 	u.rows = u.tree.visibleRows(u.matcher())
@@ -432,6 +444,9 @@ func (u *UI) render() {
 	}
 	b.WriteString("\r\n")
 	b.WriteString(u.statusLine())
+	if u.helpMode {
+		b.WriteString(u.helpOverlay())
+	}
 	os.Stdout.WriteString(b.String())
 }
 
@@ -559,13 +574,109 @@ func (u *UI) leftLine(row Row, lw int) string {
 }
 
 func (u *UI) statusLine() string {
-	hints := "j/k move · space toggle · h/l fold/drill · g/G ends · f filter · q quit"
-	if u.filterMode {
-		hints = "type to filter · enter lock · esc clear"
+	const title = " Dependency graph"
+	help := "? Help"
+	cells := []string{
+		fmt.Sprintf("%d paths", u.g.Size()),
+		"closure " + HumanSize(u.g.Closure(u.g.Root).Bytes),
 	}
-	s := fmt.Sprintf(" %s │ %d paths │ closure %s │ %s",
-		ShortName(u.g.Root), u.g.Size(), HumanSize(u.g.Closure(u.g.Root).Bytes), hints)
-	return rev + padEnd(s, u.w) + reset
+	for len(cells) > 0 {
+		right := strings.Join(append(cells, help), " │ ")
+		if runeLen(title)+runeLen(right)+1 <= u.w {
+			pad := u.w - runeLen(title) - runeLen(right)
+			return rev + bold + title + reset + rev +
+				strings.Repeat(" ", pad) + right + reset
+		}
+		cells = cells[:len(cells)-1]
+	}
+	rest := u.w - runeLen(title) - runeLen(help)
+	if rest >= 1 {
+		return rev + bold + title + reset + rev +
+			strings.Repeat(" ", rest) + help + reset
+	}
+	return rev + padEnd(truncate(title+help, u.w), u.w) + reset
+}
+
+func (u *UI) helpOverlay() string {
+	rows := [][2]string{
+		{"j/k, ↑/↓", "move selection"},
+		{"space, enter", "expand / collapse"},
+		{"h / l", "collapse / drill down"},
+		{"g / G", "jump to top / bottom"},
+		{"pgup / pgdn", "scroll by page"},
+		{"o / d / n / c", "sort by own / deps / name / closure"},
+		{"f", "filter by name"},
+		{"?", "toggle this help"},
+		{"q", "quit"},
+	}
+	const title = "Help"
+	hint := "press any key to close"
+	kw, maxw := 0, 0
+	for _, r := range rows {
+		if w := runeLen(r[0]); w > kw {
+			kw = w
+		}
+		if w := kw + 2 + runeLen(r[1]); w > maxw {
+			maxw = w
+		}
+	}
+	if w := runeLen(hint); w > maxw {
+		maxw = w
+	}
+	if w := runeLen(title) + 6; w > maxw {
+		maxw = w
+	}
+	if cap := u.w - 4; maxw > cap {
+		maxw = cap
+	}
+	if maxw < 1 {
+		maxw = 1
+	}
+	bw := maxw + 4
+	bh := len(rows) + 4
+	row := (u.h - bh) / 2
+	col := (u.w - bw) / 2
+	if row > u.h-1-bh {
+		row = u.h - 1 - bh
+	}
+	if row < 1 {
+		row = 1
+	}
+	if col < 1 {
+		col = 1
+	}
+	dash := func(n int) string {
+		if n < 0 {
+			n = 0
+		}
+		return strings.Repeat("─", n)
+	}
+	var b strings.Builder
+	line := func(r int, s string) {
+		fmt.Fprintf(&b, "\x1b[%d;%dH%s%s", row+r, col, s, reset)
+	}
+	tw := runeLen(title) + 2
+	side := (bw - 2 - tw) / 2
+	if side < 0 {
+		side = 0
+	}
+	top := dim + "┌" + dash(side) + reset + " " + bold + title + reset + " " +
+		dim + dash(bw-2-tw-side) + "┐" + reset
+	line(0, top)
+	for i, r := range rows {
+		line(i+1, dim+"│ "+reset+cyan+padEnd(r[0], kw)+reset+"  "+
+			padEnd(r[1], maxw-kw-2)+dim+" │"+reset)
+	}
+	blank := dim + "│ " + reset + strings.Repeat(" ", maxw) + dim + " │" + reset
+	line(len(rows)+1, blank)
+	pad := (maxw - runeLen(hint)) / 2
+	if pad < 0 {
+		pad = 0
+	}
+	h := strings.Repeat(" ", pad) + hint + strings.Repeat(" ", maxw-pad-runeLen(hint))
+	line(len(rows)+2, dim+"│ "+reset+dim+h+reset+dim+" │"+reset)
+	line(len(rows)+3, dim+"└"+dash(bw-2)+"┘"+reset)
+	return b.String()
 }
 
 func makeRaw(fd int) (*syscall.Termios, error) {

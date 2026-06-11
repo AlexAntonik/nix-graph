@@ -16,11 +16,6 @@ usage:
 
 path is a store path or profile (default: /run/current-system)
 
-keys:
-  j/k, arrows    move          enter/space  expand or collapse
-  h/l, arrows    collapse/drill into first child
-  g/G            top/bottom    pgup/pgdn    scroll by page
-  q              quit
 `
 
 func main() {
