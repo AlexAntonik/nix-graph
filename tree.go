@@ -5,12 +5,29 @@ type Node struct {
 	Parent   *Node
 	Expanded bool
 	Loaded   bool
+	Hidden   bool
 	Children []*Node
 }
 
 func NewTree(g *Graph) *Node {
-	root := &Node{Path: g.Root}
+	return NewTreeAt(g, g.Root)
+}
+
+func NewTreeAt(g *Graph, path string) *Node {
+	root := &Node{Path: path}
 	root.Toggle(g)
+	return root
+}
+
+func NewForest(g *Graph) *Node {
+	root := &Node{Hidden: true, Expanded: true}
+	paths := g.AllPaths()
+	children := make([]*Node, 0, len(paths))
+	for _, p := range paths {
+		children = append(children, &Node{Path: p, Parent: root})
+	}
+	root.Children = children
+	root.Loaded = true
 	return root
 }
 
@@ -51,7 +68,13 @@ func (n *Node) isLeaf(g *Graph) bool {
 		return len(n.Children) == 0
 	}
 	info := g.Get(n.Path)
-	return info == nil || info.Direct == 0
+	if info == nil {
+		return true
+	}
+	if g.Reverse {
+		return info.Dependents == 0
+	}
+	return info.Direct == 0
 }
 
 func (n *Node) Marker(g *Graph) string {
@@ -75,7 +98,10 @@ func (n *Node) Visible() []Row {
 }
 
 func (n *Node) visibleRows(match func(*Node) bool) []Row {
-	rows := []Row{{Node: n}}
+	rows := make([]Row, 0, 8)
+	if !n.Hidden {
+		rows = append(rows, Row{Node: n})
+	}
 	if !n.Expanded || !n.Loaded {
 		return rows
 	}

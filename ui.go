@@ -23,12 +23,15 @@ const (
 	clearScr = "\x1b[H\x1b[J"
 	reset    = "\x1b[0m"
 
-	dim  = "\x1b[90m"
-	bold = "\x1b[1m"
-	cyan = "\x1b[36m"
-	blue = "\x1b[34m"
-	yell = "\x1b[33m"
-	rev  = "\x1b[7m"
+	dim    = "\x1b[90m"
+	bold   = "\x1b[1m"
+	cyan   = "\x1b[36m"
+	blue   = "\x1b[34m"
+	yell   = "\x1b[33m"
+	rev    = "\x1b[7m"
+	white  = "\x1b[97m"
+	orange = "\x1b[38;5;208m"
+	barBg  = "\x1b[49m"
 )
 
 const (
@@ -52,6 +55,8 @@ type UI struct {
 	filter     string
 	filterMode bool
 	helpMode   bool
+	reverse    bool
+	reverseAll bool
 }
 
 func NewUI(g *Graph) *UI {
@@ -208,12 +213,39 @@ func (u *UI) handle(buf []byte) bool {
 			u.setSort(sortClosure)
 		case b == 'f' || b == 'F':
 			u.filterMode = true
+		case b == 'p':
+			u.toggleReverse(false)
+		case b == 'P':
+			u.toggleReverse(true)
 		case b == '?':
 			u.helpMode = true
 		}
 	}
 	u.rows = u.tree.visibleRows(u.matcher())
 	return false
+}
+
+func (u *UI) toggleReverse(all bool) {
+	if u.reverse && u.reverseAll == all {
+		u.reverse, u.reverseAll = false, false
+		u.g.Reverse = false
+		u.tree = NewTree(u.g)
+	} else {
+		u.reverse = true
+		u.reverseAll = all
+		u.g.Reverse = true
+		if all {
+			u.tree = NewForest(u.g)
+		} else {
+			u.tree = NewTreeAt(u.g, u.sel.Path)
+		}
+	}
+	u.offset = 0
+	u.rows = u.tree.visibleRows(u.matcher())
+	if len(u.rows) > 0 {
+		u.sel = u.rows[0].Node
+	}
+	u.resort()
 }
 
 func (u *UI) escape(c byte) {
@@ -242,7 +274,7 @@ func (u *UI) escape(c byte) {
 }
 
 func (u *UI) viewH() int {
-	if h := u.h - 2; h > 0 {
+	if h := u.h - 4; h > 0 {
 		return h
 	}
 	return 1
@@ -287,7 +319,7 @@ func (u *UI) up() {
 		u.sel.Expanded = false
 		return
 	}
-	if u.sel.Parent != nil {
+	if u.sel.Parent != nil && !u.sel.Parent.Hidden {
 		u.sel = u.sel.Parent
 	}
 }
@@ -391,9 +423,16 @@ func infoSize(i *Info) uint64 {
 func (u *UI) render() {
 	u.rows = u.tree.visibleRows(u.matcher())
 	if u.indexOf(u.sel) < 0 {
-		u.sel = u.tree
+		if len(u.rows) > 0 {
+			u.sel = u.rows[0].Node
+		} else {
+			u.sel = u.tree
+		}
 	}
-	lw := u.w
+	lw := u.w - 2
+	if lw < 1 {
+		lw = 1
+	}
 	selIdx := u.indexOf(u.sel)
 	if selIdx < u.offset {
 		u.offset = selIdx
@@ -427,15 +466,24 @@ func (u *UI) render() {
 		var left string
 		switch {
 		case r == 0:
-			left = u.headerLine(lw)
-		case r-1 < len(sticky):
-			left = u.leftLine(sticky[r-1], lw)
+			left = u.topBorder()
+		case r == 1:
+			left = dim + "│" + reset + u.headerLine(lw) + dim + "│" + reset
+		case r == u.h-2:
+			left = u.bottomBorder()
 		default:
-			if idx := u.offset + r - 1 - len(sticky); idx < len(u.rows) {
-				left = u.leftLine(u.rows[idx], lw)
-			} else {
-				left = padEnd("", lw)
+			var line string
+			switch rowIdx := r - 2; {
+			case rowIdx < len(sticky):
+				line = u.leftLine(sticky[rowIdx], lw)
+			default:
+				if idx := u.offset + rowIdx - len(sticky); idx < len(u.rows) {
+					line = u.leftLine(u.rows[idx], lw)
+				} else {
+					line = padEnd("", lw)
+				}
 			}
+			left = dim + "│" + reset + line + dim + "│" + reset
 		}
 		b.WriteString(left)
 		if r < u.h-2 {
@@ -448,6 +496,38 @@ func (u *UI) render() {
 		b.WriteString(u.helpOverlay())
 	}
 	os.Stdout.WriteString(b.String())
+}
+
+func (u *UI) topBorder() string {
+	title := " Dependency graph"
+	color := white
+	if u.reverse {
+		title = " Dependents graph"
+		color = orange
+	}
+	if pad := u.w - runeLen(title) - 4; pad < 0 {
+		title = truncate(title, u.w-4)
+	}
+	pad := u.w - runeLen(title) - 4
+	if pad < 0 {
+		pad = 0
+	}
+	var tp string
+	if i := strings.Index(title, "p"); i >= 0 {
+		tp = color + title[:i] + cyan + "p" + color + title[i+1:]
+	} else {
+		tp = color + title
+	}
+	return dim + "┌─" + reset + tp + reset + dim + " " +
+		strings.Repeat("─", pad) + "┐" + reset
+}
+
+func (u *UI) bottomBorder() string {
+	n := u.w - 2
+	if n < 0 {
+		n = 0
+	}
+	return dim + "└" + strings.Repeat("─", n) + "┘" + reset
 }
 
 type headerLabel struct {
@@ -574,27 +654,27 @@ func (u *UI) leftLine(row Row, lw int) string {
 }
 
 func (u *UI) statusLine() string {
-	const title = " Dependency graph"
-	help := "? Help"
+	helpW := "? Help "
+	help := cyan + "?" + white + " Help "
 	cells := []string{
-		fmt.Sprintf("%d paths", u.g.Size()),
+		fmt.Sprintf(" %d paths", u.g.Size()),
 		"closure " + HumanSize(u.g.Closure(u.g.Root).Bytes),
 	}
 	for len(cells) > 0 {
-		right := strings.Join(append(cells, help), " │ ")
-		if runeLen(title)+runeLen(right)+1 <= u.w {
-			pad := u.w - runeLen(title) - runeLen(right)
-			return rev + bold + title + reset + rev +
-				strings.Repeat(" ", pad) + right + reset
+		left := strings.Join(cells, " │ ")
+		pad := u.w - runeLen(left) - runeLen(helpW)
+		if pad < 1 {
+			cells = cells[:len(cells)-1]
+			continue
 		}
-		cells = cells[:len(cells)-1]
+		return bold + barBg + white + left + reset + bold + barBg +
+			strings.Repeat(" ", pad) + help + reset
 	}
-	rest := u.w - runeLen(title) - runeLen(help)
-	if rest >= 1 {
-		return rev + bold + title + reset + rev +
-			strings.Repeat(" ", rest) + help + reset
+	rest := u.w - runeLen(helpW)
+	if rest < 0 {
+		return bold + barBg + padEnd(truncate(helpW, u.w), u.w) + reset
 	}
-	return rev + padEnd(truncate(title+help, u.w), u.w) + reset
+	return bold + barBg + strings.Repeat(" ", rest) + help + reset
 }
 
 func (u *UI) helpOverlay() string {
@@ -606,6 +686,8 @@ func (u *UI) helpOverlay() string {
 		{"pgup / pgdn", "scroll by page"},
 		{"o / d / n / c", "sort by own / deps / name / closure"},
 		{"f", "filter by name"},
+		{"p", "dependents of selected"},
+		{"P", "all packages with dependents"},
 		{"?", "toggle this help"},
 		{"q", "quit"},
 	}

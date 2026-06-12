@@ -384,6 +384,63 @@ func TestHeaderLabels(t *testing.T) {
 	}
 }
 
+func TestToggleReverse(t *testing.T) {
+	g := testGraph()
+	u := NewUI(g)
+	u.rows = u.tree.Visible()
+	u.handle([]byte("j"))
+	u.handle([]byte("p"))
+	if !u.reverse || u.reverseAll || !u.g.Reverse {
+		t.Fatal("p should enable reverse mode")
+	}
+	if u.tree.Path != "/s/big" {
+		t.Errorf("reverse tree root = %s, want /s/big", u.tree.Path)
+	}
+	if h := stripANSI(u.topBorder()); !strings.HasPrefix(h, "┌─ Dependents graph") {
+		t.Errorf("top border = %q, want Dependents graph prefix", h)
+	}
+	u.handle([]byte("p"))
+	if u.reverse || u.reverseAll || u.g.Reverse {
+		t.Fatal("second p should restore forward mode")
+	}
+	if u.tree.Path != g.Root || u.sel != u.tree {
+		t.Errorf("forward tree root = %s sel = %v", u.tree.Path, u.sel)
+	}
+	if h := stripANSI(u.topBorder()); !strings.HasPrefix(h, "┌─ Dependency graph") {
+		t.Errorf("top border = %q, want Dependency graph prefix", h)
+	}
+	if strings.Contains(stripANSI(u.statusLine()), "p reverse") {
+		t.Error("status must not contain p reverse cell")
+	}
+}
+
+func TestToggleReverseAll(t *testing.T) {
+	g := testGraph()
+	u := NewUI(g)
+	u.rows = u.tree.Visible()
+	u.handle([]byte("P"))
+	if !u.reverse || !u.reverseAll || !u.g.Reverse {
+		t.Fatal("P should enable reverse-all mode")
+	}
+	if !u.tree.Hidden {
+		t.Fatal("reverse-all tree must have hidden root")
+	}
+	want := []string{"/s/big", "/s/small", "/s/root"}
+	if got := rowPaths(u.rows); !eqPaths(got, want) {
+		t.Errorf("top-level rows = %v, want %v", got, want)
+	}
+	if u.sel != u.rows[0].Node {
+		t.Errorf("sel = %v, want first top-level row", u.sel)
+	}
+	if h := stripANSI(u.topBorder()); !strings.HasPrefix(h, "┌─ Dependents graph") {
+		t.Errorf("top border = %q, want Dependents graph prefix", h)
+	}
+	u.handle([]byte("P"))
+	if u.reverse || u.reverseAll {
+		t.Fatal("second P should restore forward mode")
+	}
+}
+
 func TestSortKeepsCursor(t *testing.T) {
 	g := testGraph()
 	g.info["/s/zzz"] = &Info{NarSize: 300}

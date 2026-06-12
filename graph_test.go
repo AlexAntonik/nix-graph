@@ -62,6 +62,54 @@ func TestClosureCycle(t *testing.T) {
 	}
 }
 
+func TestReverseGraph(t *testing.T) {
+	g := testGraph()
+	if got := g.Get("/s/root").Dependents; got != 1 {
+		t.Errorf("Dependents(root) = %d, want 1", got)
+	}
+	if got := g.Get("/s/big").Dependents; got != 1 {
+		t.Errorf("Dependents(big) = %d, want 1", got)
+	}
+
+	g.Reverse = true
+	if refs := g.SortedRefs("/s/root"); !eqStrs(refs, []string{"/s/big"}) {
+		t.Errorf("reverse refs of root = %v, want [/s/big]", refs)
+	}
+	if refs := g.SortedRefs("/s/small"); !eqStrs(refs, []string{"/s/root"}) {
+		t.Errorf("reverse refs of small = %v, want [/s/root]", refs)
+	}
+
+	root := NewTreeAt(g, "/s/big")
+	if !root.Loaded || len(root.Children) != 1 || root.Children[0].Path != "/s/root" {
+		t.Fatalf("reverse tree of big = %+v, want [root]", root.Children)
+	}
+	if root.Marker(g) != "[-]" {
+		t.Errorf("reverse marker = %q, want [-]", root.Marker(g))
+	}
+	kids := root.Children[0]
+	kids.Toggle(g)
+	if len(kids.Children) != 0 {
+		t.Errorf("dependent big is ancestor, must be pruned: %d children", len(kids.Children))
+	}
+
+	g.Reverse = false
+	if refs := g.SortedRefs("/s/root"); !eqStrs(refs, []string{"/s/big", "/s/small"}) {
+		t.Errorf("forward refs of root = %v", refs)
+	}
+}
+
+func eqStrs(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range b {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestParseInfoJSON(t *testing.T) {
 	data := []byte(`{
   "/nix/store/aaa-root": {

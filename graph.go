@@ -19,7 +19,8 @@ type Info struct {
 	RegistrationTime int64    `json:"registrationTime"`
 	References       []string `json:"references"`
 
-	Direct int `json:"-"`
+	Direct     int `json:"-"`
+	Dependents int `json:"-"`
 }
 
 type Closure struct {
@@ -28,9 +29,11 @@ type Closure struct {
 }
 
 type Graph struct {
-	Root    string
-	info    map[string]*Info
-	closure map[string]Closure
+	Root       string
+	Reverse    bool
+	info       map[string]*Info
+	closure    map[string]Closure
+	dependents map[string][]string
 }
 
 func Load(root string) (*Graph, error) {
@@ -107,11 +110,16 @@ func lastLine(s string) string {
 }
 
 func (g *Graph) countDirect() {
+	if g.dependents == nil {
+		g.dependents = make(map[string][]string, len(g.info))
+	}
 	for path, info := range g.info {
 		for _, ref := range info.References {
 			if ref != path {
-				if _, ok := g.info[ref]; ok {
+				if dep, ok := g.info[ref]; ok {
 					info.Direct++
+					dep.Dependents++
+					g.dependents[ref] = append(g.dependents[ref], path)
 				}
 			}
 		}
@@ -122,19 +130,40 @@ func (g *Graph) Get(path string) *Info { return g.info[path] }
 
 func (g *Graph) Size() int { return len(g.info) }
 
-func (g *Graph) SortedRefs(path string) []string {
-	info := g.info[path]
-	if info == nil {
-		return nil
+func (g *Graph) AllPaths() []string {
+	paths := make([]string, 0, len(g.info))
+	for p := range g.info {
+		paths = append(paths, p)
 	}
-	refs := make([]string, 0, len(info.References))
-	for _, ref := range info.References {
-		if ref != path {
-			if _, ok := g.info[ref]; ok {
-				refs = append(refs, ref)
+	sort.Slice(paths, func(i, j int) bool {
+		a, b := g.info[paths[i]].NarSize, g.info[paths[j]].NarSize
+		if a != b {
+			return a > b
+		}
+		return paths[i] < paths[j]
+	})
+	return paths
+}
+
+func (g *Graph) SortedRefs(path string) []string {
+	var src []string
+	if g.Reverse {
+		src = g.dependents[path]
+	} else {
+		info := g.info[path]
+		if info == nil {
+			return nil
+		}
+		for _, ref := range info.References {
+			if ref != path {
+				if _, ok := g.info[ref]; ok {
+					src = append(src, ref)
+				}
 			}
 		}
 	}
+	refs := make([]string, len(src))
+	copy(refs, src)
 	sort.Slice(refs, func(i, j int) bool {
 		a, b := g.info[refs[i]].NarSize, g.info[refs[j]].NarSize
 		if a != b {
