@@ -31,7 +31,6 @@ const (
 	rev    = "\x1b[7m"
 	white  = "\x1b[97m"
 	orange = "\x1b[38;5;208m"
-	barBg  = "\x1b[49m"
 )
 
 const (
@@ -274,10 +273,17 @@ func (u *UI) escape(c byte) {
 }
 
 func (u *UI) viewH() int {
-	if h := u.h - 4; h > 0 {
+	if h := u.h - 3; h > 0 {
 		return h
 	}
 	return 1
+}
+
+func (u *UI) frameCol() string {
+	if u.reverse {
+		return orange
+	}
+	return dim
 }
 
 func (u *UI) jump(idx int) {
@@ -462,15 +468,16 @@ func (u *UI) render() {
 	} else {
 		b.WriteString("\x1b[H")
 	}
-	for r := 0; r < u.h-1; r++ {
+	fc := u.frameCol()
+	for r := 0; r < u.h; r++ {
 		var left string
 		switch {
 		case r == 0:
 			left = u.topBorder()
 		case r == 1:
-			left = dim + "│" + reset + u.headerLine(lw) + dim + "│" + reset
-		case r == u.h-2:
-			left = u.bottomBorder()
+			left = fc + "│" + reset + u.headerLine(lw) + fc + "│" + reset
+		case r == u.h-1:
+			left = u.statusLine()
 		default:
 			var line string
 			switch rowIdx := r - 2; {
@@ -483,15 +490,13 @@ func (u *UI) render() {
 					line = padEnd("", lw)
 				}
 			}
-			left = dim + "│" + reset + line + dim + "│" + reset
+			left = fc + "│" + reset + line + fc + "│" + reset
 		}
 		b.WriteString(left)
-		if r < u.h-2 {
+		if r < u.h-1 {
 			b.WriteString("\r\n")
 		}
 	}
-	b.WriteString("\r\n")
-	b.WriteString(u.statusLine())
 	if u.helpMode {
 		b.WriteString(u.helpOverlay())
 	}
@@ -518,16 +523,8 @@ func (u *UI) topBorder() string {
 	} else {
 		tp = color + title
 	}
-	return dim + "┌─" + reset + tp + reset + dim + " " +
+	return u.frameCol() + "┌─" + reset + tp + reset + u.frameCol() + " " +
 		strings.Repeat("─", pad) + "┐" + reset
-}
-
-func (u *UI) bottomBorder() string {
-	n := u.w - 2
-	if n < 0 {
-		n = 0
-	}
-	return dim + "└" + strings.Repeat("─", n) + "┘" + reset
 }
 
 type headerLabel struct {
@@ -639,42 +636,83 @@ func (u *UI) leftLine(row Row, lw int) string {
 	if row.Node == u.sel {
 		return rev + padEnd(name, nameW) + meta + reset
 	}
-	markColor := dim
+	structCol := dim
+	markColor := structCol
 	switch m {
 	case "[+] ":
 		markColor = cyan
 	case "[-] ":
 		markColor = blue
 	}
+	if u.reverse {
+		structCol = orange
+		markColor = orange
+	}
 	body := padEnd(ShortName(row.Node.Path), nameW-runeLen(lead)-runeLen(m))
-	return dim + lead + reset + markColor + m + reset + body +
+	return structCol + lead + reset + markColor + m + reset + body +
 		cyan + fmt.Sprintf("%9s", cl) + reset + " " +
 		blue + fmt.Sprintf("%8s", own) + reset + " " +
 		yell + fmt.Sprintf("%6s", deps) + reset
 }
 
-func (u *UI) statusLine() string {
-	helpW := "? Help "
-	help := cyan + "?" + white + " Help "
-	cells := []string{
-		fmt.Sprintf(" %d paths", u.g.Size()),
-		"closure " + HumanSize(u.g.Closure(u.g.Root).Bytes),
+func (u *UI) statusTab() string {
+	rowIdx := u.viewH() - 1
+	if rowIdx < 0 {
+		return "──"
 	}
-	for len(cells) > 0 {
-		left := strings.Join(cells, " │ ")
-		pad := u.w - runeLen(left) - runeLen(helpW)
-		if pad < 1 {
-			cells = cells[:len(cells)-1]
+	st := u.sticky(u.offset)
+	var row *Row
+	if rowIdx < len(st) {
+		row = &st[rowIdx]
+	} else if idx := u.offset + rowIdx - len(st); idx >= 0 && idx < len(u.rows) {
+		row = &u.rows[idx]
+	}
+	if row == nil {
+		return "──"
+	}
+	lead := []rune(row.Prefix + row.Conn)
+	if len(lead) > 1 && (lead[1] == '├' || lead[1] == '│') {
+		return "─┘"
+	}
+	return "──"
+}
+
+func (u *UI) statusLine() string {
+	fc := u.frameCol()
+	wt := bold + white
+	tab := fc + "└" + u.statusTab() + reset
+	dashes := func(n int) string {
+		if n < 1 {
+			return ""
+		}
+		return fc + strings.Repeat("─", n) + reset
+	}
+	helpW := " ? Help "
+	help := bold + " " + cyan + "?" + white + " Help " + reset
+	cells := []string{
+		" " + fmt.Sprintf("%d paths", u.g.Size()) + " ",
+		" closure " + HumanSize(u.g.Closure(u.g.Root).Bytes) + " ",
+	}
+	for n := len(cells); n > 0; n-- {
+		cs := cells[:n]
+		sum := 0
+		for _, c := range cs {
+			sum += runeLen(c)
+		}
+		fill := u.w - sum - runeLen(helpW) - 4*n - 4
+		if fill < 2 {
 			continue
 		}
-		return bold + barBg + white + left + reset + bold + barBg +
-			strings.Repeat(" ", pad) + help + reset
+		line := tab + wt + cs[0] + reset
+		for _, c := range cs[1:] {
+			line += dashes(4) + wt + c + reset
+		}
+		return line + dashes(fill) + help + dashes(4) + fc + "┘" + reset
 	}
-	rest := u.w - runeLen(helpW)
-	if rest < 0 {
-		return bold + barBg + padEnd(truncate(helpW, u.w), u.w) + reset
+	if fill := u.w - runeLen(helpW) - 8; fill >= 2 {
+		return tab + dashes(fill) + help + dashes(4) + fc + "┘" + reset
 	}
-	return bold + barBg + strings.Repeat(" ", rest) + help + reset
+	return fc + "└" + reset + padEnd(truncate(helpW, u.w-2), u.w-2) + fc + "┘" + reset
 }
 
 func (u *UI) helpOverlay() string {
