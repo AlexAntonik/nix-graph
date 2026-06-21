@@ -55,7 +55,7 @@ type UI struct {
 	filterMode bool
 	helpMode   bool
 	reverse    bool
-	reverseAll bool
+	forest     bool
 }
 
 func NewUI(g *Graph) *UI {
@@ -186,6 +186,8 @@ func (u *UI) handle(buf []byte) bool {
 			if i+2 < len(buf) && (buf[i+1] == '[' || buf[i+1] == 'O') {
 				u.escape(buf[i+2])
 				i += 2
+			} else if u.reverse {
+				u.setMode(false, false)
 			}
 		case b == ' ' || b == '\r' || b == '\n':
 			u.sel.Toggle(u.g)
@@ -213,9 +215,17 @@ func (u *UI) handle(buf []byte) bool {
 		case b == 'f' || b == 'F':
 			u.filterMode = true
 		case b == 'p':
-			u.toggleReverse(false)
+			if u.reverse && !u.forest {
+				u.flip()
+			} else {
+				u.setMode(true, false)
+			}
 		case b == 'P':
-			u.toggleReverse(true)
+			if u.reverse {
+				u.setMode(false, false)
+			} else {
+				u.setMode(true, true)
+			}
 		case b == '?':
 			u.helpMode = true
 		}
@@ -224,21 +234,32 @@ func (u *UI) handle(buf []byte) bool {
 	return false
 }
 
-func (u *UI) toggleReverse(all bool) {
-	if u.reverse && u.reverseAll == all {
-		u.reverse, u.reverseAll = false, false
-		u.g.Reverse = false
+// setMode switches between the forward tree (reverse=false), the p-mode
+// tree rooted at the selected node (p) and the all-packages forest (P).
+// In p-mode every p press flips the tree direction at the current
+// selection (dependents <-> dependencies); P or esc turns the mode off.
+func (u *UI) setMode(reverse, forest bool) {
+	u.reverse, u.forest, u.g.Reverse = reverse, forest, reverse
+	switch {
+	case !reverse:
 		u.tree = NewTree(u.g)
-	} else {
-		u.reverse = true
-		u.reverseAll = all
-		u.g.Reverse = true
-		if all {
-			u.tree = NewForest(u.g)
-		} else {
-			u.tree = NewTreeAt(u.g, u.sel.Path)
-		}
+	case forest:
+		u.tree = NewForest(u.g)
+	default:
+		u.tree = NewTreeAt(u.g, u.sel.Path)
 	}
+	u.rebuild()
+}
+
+// flip rebuilds the tree in the opposite direction at the current
+// selection: dependents become dependencies and back.
+func (u *UI) flip() {
+	u.g.Reverse = !u.g.Reverse
+	u.tree = NewTreeAt(u.g, u.sel.Path)
+	u.rebuild()
+}
+
+func (u *UI) rebuild() {
 	u.offset = 0
 	u.rows = u.tree.visibleRows(u.matcher())
 	if len(u.rows) > 0 {
@@ -505,9 +526,11 @@ func (u *UI) render() {
 
 func (u *UI) topBorder() string {
 	title := " Dependency graph"
+	if u.g.Reverse {
+		title = " Dependents graph"
+	}
 	color := white
 	if u.reverse {
-		title = " Dependents graph"
 		color = orange
 	}
 	if pad := u.w - runeLen(title) - 4; pad < 0 {
@@ -724,8 +747,9 @@ func (u *UI) helpOverlay() string {
 		{"pgup / pgdn", "scroll by page"},
 		{"o / d / n / c", "sort by own / deps / name / closure"},
 		{"f", "filter by name"},
-		{"p", "dependents of selected"},
+		{"p", "flip tree at selected node"},
 		{"P", "all packages with dependents"},
+		{"esc", "exit inverted view"},
 		{"?", "toggle this help"},
 		{"q", "quit"},
 	}

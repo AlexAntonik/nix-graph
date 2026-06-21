@@ -390,7 +390,7 @@ func TestToggleReverse(t *testing.T) {
 	u.rows = u.tree.Visible()
 	u.handle([]byte("j"))
 	u.handle([]byte("p"))
-	if !u.reverse || u.reverseAll || !u.g.Reverse {
+	if !u.reverse || !u.g.Reverse {
 		t.Fatal("p should enable reverse mode")
 	}
 	if u.tree.Path != "/s/big" {
@@ -399,9 +399,37 @@ func TestToggleReverse(t *testing.T) {
 	if h := stripANSI(u.topBorder()); !strings.HasPrefix(h, "┌─ Dependents graph") {
 		t.Errorf("top border = %q, want Dependents graph prefix", h)
 	}
+
+	// second p at a new selection flips to the forward tree rooted there
+	u.handle([]byte("j"))
 	u.handle([]byte("p"))
-	if u.reverse || u.reverseAll || u.g.Reverse {
-		t.Fatal("second p should restore forward mode")
+	if !u.reverse || u.g.Reverse {
+		t.Fatal("second p must flip to the forward tree, keeping the mode on")
+	}
+	if u.tree.Path != "/s/root" {
+		t.Errorf("forward tree root = %s, want /s/root", u.tree.Path)
+	}
+	if u.sel != u.tree || u.sel.Path != "/s/root" {
+		t.Errorf("sel = %v, want re-rooted node", u.sel)
+	}
+	if h := stripANSI(u.topBorder()); !strings.HasPrefix(h, "┌─ Dependency graph") {
+		t.Errorf("top border = %q, want Dependency graph prefix", h)
+	}
+
+	// one more press flips back to dependents
+	u.handle([]byte("j"))
+	u.handle([]byte("p"))
+	if !u.reverse || !u.g.Reverse {
+		t.Fatal("third p must flip back to dependents")
+	}
+	if u.tree.Path != "/s/big" {
+		t.Errorf("re-inverted tree root = %s, want /s/big", u.tree.Path)
+	}
+
+	// P turns the mode off into the forward tree
+	u.handle([]byte("P"))
+	if u.reverse || u.g.Reverse {
+		t.Fatal("P should exit reverse mode")
 	}
 	if u.tree.Path != g.Root || u.sel != u.tree {
 		t.Errorf("forward tree root = %s sel = %v", u.tree.Path, u.sel)
@@ -412,6 +440,16 @@ func TestToggleReverse(t *testing.T) {
 	if strings.Contains(stripANSI(u.statusLine()), "p reverse") {
 		t.Error("status must not contain p reverse cell")
 	}
+
+	// esc also turns the mode off
+	u.handle([]byte("p"))
+	u.handle([]byte{0x1b})
+	if u.reverse || u.g.Reverse {
+		t.Fatal("esc should exit reverse mode")
+	}
+	if u.tree.Path != g.Root {
+		t.Errorf("tree after esc = %s, want root", u.tree.Path)
+	}
 }
 
 func TestToggleReverseAll(t *testing.T) {
@@ -419,7 +457,7 @@ func TestToggleReverseAll(t *testing.T) {
 	u := NewUI(g)
 	u.rows = u.tree.Visible()
 	u.handle([]byte("P"))
-	if !u.reverse || !u.reverseAll || !u.g.Reverse {
+	if !u.reverse || !u.g.Reverse {
 		t.Fatal("P should enable reverse-all mode")
 	}
 	if !u.tree.Hidden {
@@ -435,9 +473,18 @@ func TestToggleReverseAll(t *testing.T) {
 	if h := stripANSI(u.topBorder()); !strings.HasPrefix(h, "┌─ Dependents graph") {
 		t.Errorf("top border = %q, want Dependents graph prefix", h)
 	}
+	// p in the forest roots the inverted tree at the selection
+	u.handle([]byte("p"))
+	if !u.reverse || !u.g.Reverse || u.tree.Hidden {
+		t.Fatal("p in forest should enter p-mode with an inverted tree")
+	}
+	if u.tree.Path != "/s/big" {
+		t.Errorf("tree after p in forest = %s, want /s/big", u.tree.Path)
+	}
+
 	u.handle([]byte("P"))
-	if u.reverse || u.reverseAll {
-		t.Fatal("second P should restore forward mode")
+	if u.reverse || u.g.Reverse {
+		t.Fatal("P should exit reverse mode")
 	}
 }
 
