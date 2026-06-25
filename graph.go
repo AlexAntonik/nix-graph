@@ -35,6 +35,7 @@ type Graph struct {
 	closure    map[string]Closure
 	dependents map[string][]string
 	depClosure map[string]int
+	added      map[string]uint64
 }
 
 func Load(root string) (*Graph, error) {
@@ -205,6 +206,141 @@ func (g *Graph) closureOf(path string) Closure {
 		}
 	}
 	return c
+}
+
+// Added returns the added size of path: the size of the path itself plus
+// the sizes of all transitive dependencies that are reachable only through
+// path. In other words, the cost of having that path on top of everything
+// else in the graph. It is the sum over the dominator-tree subtree of the
+// path: a dependency counts towards the path only when every route from
+// the root to it goes through the path.
+func (g *Graph) Added(path string) uint64 {
+	if g.added == nil {
+		g.buildAdded()
+	}
+	if n, ok := g.added[path]; ok {
+		return n
+	}
+	if i := g.info[path]; i != nil {
+		return i.NarSize
+	}
+	return 0
+}
+
+// buildAdded computes the dominator tree of the forward reference graph
+// rooted at Root (Cooper-Harvey-Kennedy) and accumulates nar sizes
+// bottom-up: added(p) is the total size of all paths dominated by p.
+// Store references form a DAG (self references excluded), so the reverse
+// postorder is topological and one accumulation pass suffices.
+func (g *Graph) buildAdded() {
+	g.added = make(map[string]uint64, len(g.info))
+	if _, ok := g.info[g.Root]; !ok {
+		return
+	}
+
+	// Depth-first search over forward references, collecting nodes in
+	// postorder.
+	seen := map[string]bool{g.Root: true}
+	type frame struct {
+		path string
+		next int
+	}
+	var post []string
+	stack := []frame{{g.Root, 0}}
+	for len(stack) > 0 {
+		f := &stack[len(stack)-1]
+		info := g.info[f.path]
+		moved := false
+		for info != nil && f.next < len(info.References) {
+			ref := info.References[f.next]
+			f.next++
+			if ref == f.path || seen[ref] || g.info[ref] == nil {
+				continue
+			}
+			seen[ref] = true
+			stack = append(stack, frame{ref, 0})
+			moved = true
+			break
+		}
+		if !moved {
+			post = append(post, f.path)
+			stack = stack[:len(stack)-1]
+		}
+	}
+
+	n := len(post)
+	rpo := make([]string, n)
+	idx := make(map[string]int, n)
+	for i, p := range post {
+		rpo[n-1-i] = p
+	}
+	for i, p := range rpo {
+		idx[p] = i
+	}
+
+	preds := make([][]int, n)
+	for i, p := range rpo {
+		info := g.info[p]
+		for _, ref := range info.References {
+			if ref == p {
+				continue
+			}
+			if j, ok := idx[ref]; ok {
+				preds[j] = append(preds[j], i)
+			}
+		}
+	}
+
+	idom := make([]int, n)
+	for i := range idom {
+		idom[i] = -1
+	}
+	idom[0] = 0
+	intersect := func(a, b int) int {
+		for a != b {
+			for a > b {
+				a = idom[a]
+			}
+			for b > a {
+				b = idom[b]
+			}
+		}
+		return a
+	}
+	for changed := true; changed; {
+		changed = false
+		for w := 1; w < n; w++ {
+			newIDom := -1
+			for _, p := range preds[w] {
+				if idom[p] == -1 {
+					continue
+				}
+				if newIDom == -1 {
+					newIDom = p
+				} else {
+					newIDom = intersect(newIDom, p)
+				}
+			}
+			if newIDom != -1 && idom[w] != newIDom {
+				idom[w] = newIDom
+				changed = true
+			}
+		}
+	}
+
+	kids := make([][]int, n)
+	for w := 1; w < n; w++ {
+		if d := idom[w]; d >= 0 && d != w {
+			kids[d] = append(kids[d], w)
+		}
+	}
+	for w := n - 1; w >= 0; w-- {
+		sum := g.info[rpo[w]].NarSize
+		for _, c := range kids[w] {
+			sum += g.added[rpo[c]]
+		}
+		g.added[rpo[w]] = sum
+	}
 }
 
 // DependentsClosure returns how many paths transitively depend on path,

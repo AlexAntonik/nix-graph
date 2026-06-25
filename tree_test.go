@@ -175,8 +175,8 @@ func TestUISort(t *testing.T) {
 		return true
 	}
 
-	if u.sortKey != sortOwn || !u.sortDesc {
-		t.Fatalf("initial sort state = %d/%v, want sortOwn/desc", u.sortKey, u.sortDesc)
+	if u.sortKey != sortNar || !u.sortDesc {
+		t.Fatalf("initial sort state = %d/%v, want sortNar/desc", u.sortKey, u.sortDesc)
 	}
 	natural := []string{"/s/big", "/s/zzz", "/s/mmm", "/s/aaa", "/s/small"}
 	if got := paths(); !eq(got, natural) {
@@ -208,13 +208,13 @@ func TestUISort(t *testing.T) {
 		t.Errorf("deps asc = %v", got)
 	}
 
-	u.setSort(sortOwn)
-	if u.sortKey != sortOwn || !u.sortDesc {
+	u.setSort(sortNar)
+	if u.sortKey != sortNar || !u.sortDesc {
 		t.Errorf("switching key resets to desc, got %d/%v", u.sortKey, u.sortDesc)
 	}
-	u.setSort(sortOwn)
-	if u.sortDesc || u.sortKey != sortOwn {
-		t.Errorf("own cycle state = %d/%v, want sortOwn/asc", u.sortKey, u.sortDesc)
+	u.setSort(sortNar)
+	if u.sortDesc || u.sortKey != sortNar {
+		t.Errorf("nar cycle state = %d/%v, want sortNar/asc", u.sortKey, u.sortDesc)
 	}
 
 	u.setSort(sortClosure)
@@ -352,7 +352,7 @@ func TestLeftLineWidth(t *testing.T) {
 	g := testGraph()
 	u := NewUI(g)
 	rows := u.tree.Visible()
-	const lw = 43
+	const lw = 60
 	sel := runeLen(stripANSI(u.leftLine(rows[1], lw)))
 	other := runeLen(stripANSI(u.leftLine(rows[2], lw)))
 	if sel != lw || other != lw {
@@ -368,19 +368,49 @@ func TestHeaderLabels(t *testing.T) {
 	g := testGraph()
 	u := NewUI(g)
 	u.sortKey = sortNone
-	h := stripANSI(u.headerLine(43))
-	if !strings.HasSuffix(h, "  CLOSURE      OWN  DEPENDENCIES") {
+	h := stripANSI(u.headerLine(60))
+	if !strings.HasSuffix(h, "  CLOSURE     ADDED  NAR-SIZE  DEPENDENCIES") {
 		t.Errorf("header = %q", h)
 	}
 	u.setSort(sortClosure)
-	h = stripANSI(u.headerLine(43))
+	h = stripANSI(u.headerLine(60))
 	if !strings.Contains(h, "↓CLOSURE") {
 		t.Errorf("header with arrow = %q", h)
 	}
+	u.handle([]byte("a"))
+	if u.sortKey != sortAdded || !u.sortDesc {
+		t.Fatalf("a key sort state = %d/%v, want sortAdded/desc", u.sortKey, u.sortDesc)
+	}
+	h = stripANSI(u.headerLine(60))
+	if !strings.Contains(h, "↓ADDED") {
+		t.Errorf("header with added arrow = %q", h)
+	}
 	u.setSort(sortDeps)
-	h = stripANSI(u.headerLine(43))
+	h = stripANSI(u.headerLine(60))
 	if !strings.Contains(h, "↓DEPENDENCIES") {
 		t.Errorf("header with deps arrow = %q", h)
+	}
+}
+
+func TestAddedColumn(t *testing.T) {
+	g := addedGraph()
+	u := NewUI(g)
+	u.rows = u.tree.Visible()
+	var row Row
+	for _, r := range u.rows {
+		if r.Node.Path == "/s/a" {
+			row = r
+		}
+	}
+	if row.Node == nil {
+		t.Fatal("row /s/a not found")
+	}
+	// a shows closure 1105 (a+lib+only), added 105 (a+only), nar 100
+	line := stripANSI(u.leftLine(row, 60))
+	for _, want := range []string{"1.1K", "105B", "100B"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("line = %q, want %q in it", line, want)
+		}
 	}
 }
 
@@ -539,7 +569,7 @@ func TestDepsColumn(t *testing.T) {
 	if w := runeLen(stripANSI(u.leftLine(rows[1], 60))); w != 60 {
 		t.Errorf("forward non-selected row width = %d, want 60", w)
 	}
-	if h := stripANSI(u.headerLine(60)); !strings.HasSuffix(h, "OWN  DEPENDENCIES") {
+	if h := stripANSI(u.headerLine(60)); !strings.HasSuffix(h, "NAR-SIZE  DEPENDENCIES") {
 		t.Errorf("forward header = %q, want DEPENDENCIES", h)
 	}
 	if w := runeLen(stripANSI(u.headerLine(60))); w != 60 {

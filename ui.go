@@ -27,6 +27,7 @@ const (
 	bold   = "\x1b[1m"
 	cyan   = "\x1b[36m"
 	blue   = "\x1b[34m"
+	green  = "\x1b[32m"
 	yell   = "\x1b[33m"
 	rev    = "\x1b[7m"
 	white  = "\x1b[97m"
@@ -35,10 +36,11 @@ const (
 
 const (
 	sortNone = iota
-	sortOwn
+	sortNar
 	sortDeps
 	sortName
 	sortClosure
+	sortAdded
 )
 
 type UI struct {
@@ -67,7 +69,7 @@ func NewUI(g *Graph) *UI {
 		w:         80,
 		h:         24,
 		clearNext: true,
-		sortKey:   sortOwn,
+		sortKey:   sortNar,
 		sortDesc:  true,
 	}
 }
@@ -204,14 +206,16 @@ func (u *UI) handle(buf []byte) bool {
 			u.jump(0)
 		case b == 'G':
 			u.jump(len(u.rows) - 1)
-		case b == 'o':
-			u.setSort(sortOwn)
+		case b == 'o' || b == 's':
+			u.setSort(sortNar)
 		case b == 'd':
 			u.setSort(sortDeps)
 		case b == 'n':
 			u.setSort(sortName)
 		case b == 'c':
 			u.setSort(sortClosure)
+		case b == 'a':
+			u.setSort(sortAdded)
 		case b == 'f' || b == 'F':
 			u.filterMode = true
 		case b == 'p':
@@ -407,7 +411,7 @@ func (u *UI) less(a, b *Node) bool {
 		if da != db {
 			return u.ord(da > db)
 		}
-	case sortOwn:
+	case sortNar:
 		sa, sb := infoSize(ia), infoSize(ib)
 		if sa != sb {
 			return u.ord(sa > sb)
@@ -421,6 +425,11 @@ func (u *UI) less(a, b *Node) bool {
 		ca, cb := u.g.Closure(a.Path).Bytes, u.g.Closure(b.Path).Bytes
 		if ca != cb {
 			return u.ord(ca > cb)
+		}
+	case sortAdded:
+		aa, ab := u.g.Added(a.Path), u.g.Added(b.Path)
+		if aa != ab {
+			return u.ord(aa > ab)
 		}
 	}
 	return Name(a.Path) < Name(b.Path)
@@ -600,9 +609,10 @@ func (u *UI) colLabel(text, letter string, key int) headerLabel {
 
 func (u *UI) headerLine(lw int) string {
 	depsLbl, depsW := u.depsCol()
-	metaW := 9 + 1 + 8 + 1 + depsW
+	metaW := 9 + 1 + 9 + 1 + 9 + 1 + depsW
 	cl := u.colLabel("CLOSURE", "C", sortClosure)
-	own := u.colLabel("OWN", "O", sortOwn)
+	added := u.colLabel("ADDED", "A", sortAdded)
+	nar := u.colLabel("NAR-SIZE", "S", sortNar)
 	deps := u.colLabel(depsLbl, "D", sortDeps)
 	name := u.colLabel("NAME", "N", sortName)
 	if lw < name.w+metaW+1 {
@@ -626,7 +636,7 @@ func (u *UI) headerLine(lw int) string {
 		}
 		fw = runeLen(lbl) + runeLen(q) + runeLen(cur)
 	}
-	meta := cl.padStart(9) + " " + own.padStart(8) + " " + deps.padStart(depsW)
+	meta := cl.padStart(9) + " " + added.padStart(9) + " " + nar.padStart(9) + " " + deps.padStart(depsW)
 	if fw == 0 {
 		return bold + name.pad(lw-metaW) + meta + reset
 	}
@@ -664,10 +674,12 @@ func (u *UI) leftLine(row Row, lw int) string {
 	}
 	lead := row.Prefix + row.Conn
 	name := lead + m + ShortName(row.Node.Path)
-	cl, own := HumanSize(u.g.Closure(row.Node.Path).Bytes), HumanSize(info.NarSize)
+	cl := HumanSize(u.g.Closure(row.Node.Path).Bytes)
+	added := HumanSize(u.g.Added(row.Node.Path))
+	nar := HumanSize(info.NarSize)
 	_, depsW := u.depsCol()
 	deps := strconv.Itoa(u.depsCount(row.Node.Path))
-	meta := fmt.Sprintf("%9s %8s %*s", cl, own, depsW, deps)
+	meta := fmt.Sprintf("%9s %9s %9s %*s", cl, added, nar, depsW, deps)
 	nameW := lw - runeLen(meta)
 	if nameW < 1 {
 		return padEnd(truncate(name, lw), lw)
@@ -690,7 +702,8 @@ func (u *UI) leftLine(row Row, lw int) string {
 	body := padEnd(ShortName(row.Node.Path), nameW-runeLen(lead)-runeLen(m))
 	return structCol + lead + reset + markColor + m + reset + body +
 		cyan + fmt.Sprintf("%9s", cl) + reset + " " +
-		blue + fmt.Sprintf("%8s", own) + reset + " " +
+		green + fmt.Sprintf("%9s", added) + reset + " " +
+		blue + fmt.Sprintf("%9s", nar) + reset + " " +
 		yell + fmt.Sprintf("%*s", depsW, deps) + reset
 }
 
@@ -761,7 +774,7 @@ func (u *UI) helpOverlay() string {
 		{"h / l", "collapse / drill down"},
 		{"g / G", "jump to top / bottom"},
 		{"pgup / pgdn", "scroll by page"},
-		{"o / d / n / c", "sort by own / deps / name / closure"},
+		{"c / a / s / d / n", "sort by closure / added / size / deps / name"},
 		{"f", "filter by name"},
 		{"p", "flip tree at selected node"},
 		{"P", "all packages with dependents"},

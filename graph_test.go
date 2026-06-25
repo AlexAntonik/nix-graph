@@ -62,6 +62,72 @@ func TestClosureCycle(t *testing.T) {
 	}
 }
 
+// addedGraph: lib is shared by root, a and b; only is reachable through a.
+func addedGraph() *Graph {
+	g := &Graph{
+		Root: "/s/root",
+		info: map[string]*Info{
+			"/s/root": {NarSize: 10, References: []string{"/s/a", "/s/b", "/s/lib"}},
+			"/s/a":    {NarSize: 100, References: []string{"/s/lib", "/s/only"}},
+			"/s/only": {NarSize: 5},
+			"/s/b":    {NarSize: 200, References: []string{"/s/lib"}},
+			"/s/lib":  {NarSize: 1000, References: []string{"/s/lib"}},
+		},
+		closure: map[string]Closure{},
+	}
+	g.countDirect()
+	return g
+}
+
+func TestAdded(t *testing.T) {
+	g := addedGraph()
+	want := map[string]uint64{
+		"/s/root": 1315, // = closure size of the root
+		"/s/a":    105,  // itself plus the unique dep
+		"/s/b":    200,
+		"/s/lib":  1000,
+		"/s/only": 5,
+	}
+	for path, size := range want {
+		if got := g.Added(path); got != size {
+			t.Errorf("Added(%s) = %d, want %d", path, got, size)
+		}
+	}
+}
+
+func TestAddedDeepShared(t *testing.T) {
+	g := &Graph{
+		Root: "/s/root",
+		info: map[string]*Info{
+			"/s/root": {NarSize: 10, References: []string{"/s/a", "/s/b"}},
+			"/s/a":    {NarSize: 100, References: []string{"/s/x", "/s/y"}},
+			"/s/b":    {NarSize: 200, References: []string{"/s/x", "/s/z"}},
+			"/s/x":    {NarSize: 1000},
+			"/s/y":    {NarSize: 50, References: []string{"/s/z"}},
+			"/s/z":    {NarSize: 20},
+		},
+		closure: map[string]Closure{},
+	}
+	g.countDirect()
+	// x and z are also reachable through b, only y is unique to a
+	want := map[string]uint64{
+		"/s/root": 1380,
+		"/s/a":    150,
+		"/s/b":    200,
+		"/s/x":    1000,
+		"/s/y":    50,
+		"/s/z":    20,
+	}
+	for path, size := range want {
+		if got := g.Added(path); got != size {
+			t.Errorf("Added(%s) = %d, want %d", path, got, size)
+		}
+	}
+	if c := g.Closure("/s/root"); c.Bytes != 1380 {
+		t.Errorf("Closure(root) = %d, want 1380", c.Bytes)
+	}
+}
+
 func TestReverseGraph(t *testing.T) {
 	g := testGraph()
 	if got := g.Get("/s/root").Dependents; got != 1 {
