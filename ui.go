@@ -403,7 +403,7 @@ func (u *UI) less(a, b *Node) bool {
 			return sa > sb
 		}
 	case sortDeps:
-		da, db := infoDirect(ia), infoDirect(ib)
+		da, db := u.depsCount(a.Path), u.depsCount(b.Path)
 		if da != db {
 			return u.ord(da > db)
 		}
@@ -433,11 +433,25 @@ func (u *UI) ord(greater bool) bool {
 	return !greater
 }
 
-func infoDirect(i *Info) int {
-	if i == nil {
+// depsCol is the last meta column: dependencies in the forward graph,
+// dependents in the inverted one. The width leaves room for the sort arrow.
+func (u *UI) depsCol() (string, int) {
+	if u.g.Reverse {
+		return "DEPENDENTS", 11
+	}
+	return "DEPENDENCIES", 13
+}
+
+// depsCount is the number in the deps column: all transitive dependencies
+// in the forward graph, all transitive dependents in the inverted one.
+func (u *UI) depsCount(path string) int {
+	if u.g.Get(path) == nil {
 		return 0
 	}
-	return i.Direct
+	if u.g.Reverse {
+		return u.g.DependentsClosure(path) - 1
+	}
+	return u.g.Closure(path).Paths - 1
 }
 
 func infoSize(i *Info) uint64 {
@@ -585,10 +599,11 @@ func (u *UI) colLabel(text, letter string, key int) headerLabel {
 }
 
 func (u *UI) headerLine(lw int) string {
-	const metaW = 9 + 1 + 8 + 1 + 6
+	depsLbl, depsW := u.depsCol()
+	metaW := 9 + 1 + 8 + 1 + depsW
 	cl := u.colLabel("CLOSURE", "C", sortClosure)
 	own := u.colLabel("OWN", "O", sortOwn)
-	deps := u.colLabel("DEPS", "D", sortDeps)
+	deps := u.colLabel(depsLbl, "D", sortDeps)
 	name := u.colLabel("NAME", "N", sortName)
 	if lw < name.w+metaW+1 {
 		return bold + padEnd(truncate("nixview", lw), lw) + reset
@@ -611,7 +626,7 @@ func (u *UI) headerLine(lw int) string {
 		}
 		fw = runeLen(lbl) + runeLen(q) + runeLen(cur)
 	}
-	meta := cl.padStart(9) + " " + own.padStart(8) + " " + deps.padStart(6)
+	meta := cl.padStart(9) + " " + own.padStart(8) + " " + deps.padStart(depsW)
 	if fw == 0 {
 		return bold + name.pad(lw-metaW) + meta + reset
 	}
@@ -650,8 +665,9 @@ func (u *UI) leftLine(row Row, lw int) string {
 	lead := row.Prefix + row.Conn
 	name := lead + m + ShortName(row.Node.Path)
 	cl, own := HumanSize(u.g.Closure(row.Node.Path).Bytes), HumanSize(info.NarSize)
-	deps := strconv.Itoa(info.Direct)
-	meta := fmt.Sprintf("%9s %8s %6s", cl, own, deps)
+	_, depsW := u.depsCol()
+	deps := strconv.Itoa(u.depsCount(row.Node.Path))
+	meta := fmt.Sprintf("%9s %8s %*s", cl, own, depsW, deps)
 	nameW := lw - runeLen(meta)
 	if nameW < 1 {
 		return padEnd(truncate(name, lw), lw)
@@ -675,7 +691,7 @@ func (u *UI) leftLine(row Row, lw int) string {
 	return structCol + lead + reset + markColor + m + reset + body +
 		cyan + fmt.Sprintf("%9s", cl) + reset + " " +
 		blue + fmt.Sprintf("%8s", own) + reset + " " +
-		yell + fmt.Sprintf("%6s", deps) + reset
+		yell + fmt.Sprintf("%*s", depsW, deps) + reset
 }
 
 func (u *UI) statusTab() string {
@@ -749,7 +765,7 @@ func (u *UI) helpOverlay() string {
 		{"f", "filter by name"},
 		{"p", "flip tree at selected node"},
 		{"P", "all packages with dependents"},
-		{"esc", "exit inverted view"},
+		{"esc", "exit inverted view / filter"},
 		{"?", "toggle this help"},
 		{"q", "quit"},
 	}

@@ -200,11 +200,11 @@ func TestUISort(t *testing.T) {
 	}
 
 	u.setSort(sortDeps)
-	if got := paths(); !eq(got, []string{"/s/aaa", "/s/big", "/s/mmm", "/s/small", "/s/zzz"}) {
+	if got := paths(); !eq(got, []string{"/s/big", "/s/aaa", "/s/mmm", "/s/small", "/s/zzz"}) {
 		t.Errorf("deps desc = %v", got)
 	}
 	u.setSort(sortDeps)
-	if got := paths(); !eq(got, []string{"/s/mmm", "/s/small", "/s/zzz", "/s/big", "/s/aaa"}) {
+	if got := paths(); !eq(got, []string{"/s/mmm", "/s/small", "/s/zzz", "/s/aaa", "/s/big"}) {
 		t.Errorf("deps asc = %v", got)
 	}
 
@@ -369,7 +369,7 @@ func TestHeaderLabels(t *testing.T) {
 	u := NewUI(g)
 	u.sortKey = sortNone
 	h := stripANSI(u.headerLine(43))
-	if !strings.HasSuffix(h, "  CLOSURE      OWN   DEPS") {
+	if !strings.HasSuffix(h, "  CLOSURE      OWN  DEPENDENCIES") {
 		t.Errorf("header = %q", h)
 	}
 	u.setSort(sortClosure)
@@ -379,7 +379,7 @@ func TestHeaderLabels(t *testing.T) {
 	}
 	u.setSort(sortDeps)
 	h = stripANSI(u.headerLine(43))
-	if !strings.Contains(h, "↓DEPS") {
+	if !strings.Contains(h, "↓DEPENDENCIES") {
 		t.Errorf("header with deps arrow = %q", h)
 	}
 }
@@ -508,5 +508,102 @@ func TestSortKeepsCursor(t *testing.T) {
 	}
 	if u.sel.Path != "/s/aaa" {
 		t.Errorf("sel = %s, want /s/aaa", u.sel.Path)
+	}
+}
+
+func TestDepsColumn(t *testing.T) {
+	g := &Graph{
+		Root: "/s/root",
+		info: map[string]*Info{
+			"/s/root":  {NarSize: 10, References: []string{"/s/big", "/s/small"}},
+			"/s/big":   {NarSize: 300, References: []string{"/s/root", "/s/mid"}},
+			"/s/mid":   {NarSize: 60, References: []string{"/s/leaf"}},
+			"/s/leaf":  {NarSize: 5},
+			"/s/small": {NarSize: 50, References: []string{"/s/small"}},
+		},
+		closure: map[string]Closure{},
+	}
+	g.countDirect()
+
+	u := NewUI(g)
+	rows := u.tree.Visible()
+
+	// root directly needs big+small, transitively also mid+leaf
+	fwd := stripANSI(u.leftLine(rows[0], 60))
+	if !strings.HasSuffix(fwd, "     4") {
+		t.Errorf("forward deps value = %q, want all deps of root = 4", fwd)
+	}
+	if w := runeLen(fwd); w != 60 {
+		t.Errorf("forward selected row width = %d, want 60", w)
+	}
+	if w := runeLen(stripANSI(u.leftLine(rows[1], 60))); w != 60 {
+		t.Errorf("forward non-selected row width = %d, want 60", w)
+	}
+	if h := stripANSI(u.headerLine(60)); !strings.HasSuffix(h, "OWN  DEPENDENCIES") {
+		t.Errorf("forward header = %q, want DEPENDENCIES", h)
+	}
+	if w := runeLen(stripANSI(u.headerLine(60))); w != 60 {
+		t.Errorf("forward header width = %d, want 60", w)
+	}
+
+	u.g.Reverse = true
+	// small is directly referenced only by root, but big depends on it too
+	if got := stripANSI(u.leftLine(rows[2], 60)); !strings.HasSuffix(got, "     2") {
+		t.Errorf("reverse deps value = %q, want all dependents of small = 2", got)
+	}
+	if w := runeLen(stripANSI(u.leftLine(rows[1], 60))); w != 60 {
+		t.Errorf("reverse non-selected row width = %d, want 60", w)
+	}
+	if h := stripANSI(u.headerLine(60)); !strings.Contains(h, "DEPENDENTS") {
+		t.Errorf("reverse header = %q, want DEPENDENTS", h)
+	}
+	if w := runeLen(stripANSI(u.headerLine(60))); w != 60 {
+		t.Errorf("reverse header width = %d, want 60", w)
+	}
+
+	u.setSort(sortDeps)
+	if h := stripANSI(u.headerLine(60)); !strings.Contains(h, "↓DEPENDENTS") {
+		t.Errorf("reverse sorted header = %q, want ↓DEPENDENTS", h)
+	}
+	if w := runeLen(stripANSI(u.headerLine(60))); w != 60 {
+		t.Errorf("reverse sorted header width = %d, want 60", w)
+	}
+}
+
+func TestDepsSortFollowsMode(t *testing.T) {
+	g := &Graph{
+		Root: "/s/root",
+		info: map[string]*Info{
+			"/s/root":  {NarSize: 10, References: []string{"/s/big", "/s/small", "/s/zzz", "/s/mmm", "/s/aaa"}},
+			"/s/big":   {NarSize: 300, References: []string{"/s/root"}},
+			"/s/small": {NarSize: 50, References: []string{"/s/small"}},
+			"/s/zzz":   {NarSize: 40, References: []string{"/s/mmm"}},
+			"/s/mmm":   {NarSize: 30},
+			"/s/aaa":   {NarSize: 20, References: []string{"/s/mmm", "/s/zzz"}},
+		},
+		closure: map[string]Closure{},
+	}
+	g.countDirect()
+
+	u := NewUI(g)
+	u.setSort(sortDeps)
+	paths := func() []string {
+		out := make([]string, 0, len(u.tree.Children))
+		for _, c := range u.tree.Children {
+			out = append(out, c.Path)
+		}
+		return out
+	}
+	// transitively: big 5 (via root), aaa 2, zzz 1, mmm/small 0
+	want := []string{"/s/big", "/s/aaa", "/s/zzz", "/s/mmm", "/s/small"}
+	if got := paths(); !eqPaths(got, want) {
+		t.Errorf("forward deps sort = %v, want %v", got, want)
+	}
+	// transitively: mmm 4, zzz 3, aaa/small 2, big 1
+	u.g.Reverse = true
+	u.resort()
+	want = []string{"/s/mmm", "/s/zzz", "/s/aaa", "/s/small", "/s/big"}
+	if got := paths(); !eqPaths(got, want) {
+		t.Errorf("reverse deps sort = %v, want %v", got, want)
 	}
 }

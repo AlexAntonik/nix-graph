@@ -34,6 +34,7 @@ type Graph struct {
 	info       map[string]*Info
 	closure    map[string]Closure
 	dependents map[string][]string
+	depClosure map[string]int
 }
 
 func Load(root string) (*Graph, error) {
@@ -204,4 +205,31 @@ func (g *Graph) closureOf(path string) Closure {
 		}
 	}
 	return c
+}
+
+// DependentsClosure returns how many paths transitively depend on path,
+// counting path itself.
+func (g *Graph) DependentsClosure(path string) int {
+	if g.depClosure == nil {
+		g.depClosure = make(map[string]int, len(g.info))
+	}
+	if n, ok := g.depClosure[path]; ok {
+		return n
+	}
+	seen := map[string]bool{path: true}
+	stack := []string{path}
+	n := 0
+	for len(stack) > 0 {
+		cur := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		n++
+		for _, d := range g.dependents[cur] {
+			if !seen[d] {
+				seen[d] = true
+				stack = append(stack, d)
+			}
+		}
+	}
+	g.depClosure[path] = n
+	return n
 }
