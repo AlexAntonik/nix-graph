@@ -105,10 +105,12 @@ func (n *Node) visibleRows(match func(*Node) bool) []Row {
 	if !n.Expanded || !n.Loaded {
 		return rows
 	}
-	var walk func(*Node, string, int, bool)
-	walk = func(node *Node, prefix string, depth int, last bool) {
+	var walk func(*Node, string, int, bool, bool)
+	walk = func(node *Node, prefix string, depth int, last bool, first bool) {
 		conn := " ├─ "
-		if last {
+		if first {
+			conn = " ┌─ "
+		} else if last {
 			conn = " └─ "
 		}
 		rows = append(rows, Row{node, prefix, conn})
@@ -126,12 +128,12 @@ func (n *Node) visibleRows(match func(*Node) bool) []Row {
 					childPrefix += " │  "
 				}
 			}
-			walk(child, childPrefix, depth+1, lastChild)
+			walk(child, childPrefix, depth+1, lastChild, false)
 		}
 	}
 	kept := matchedChildren(n, match)
 	for i, child := range kept {
-		walk(child, "", 1, i == len(kept)-1)
+		walk(child, "", 1, i == len(kept)-1, n.Hidden && i == 0)
 	}
 	return rows
 }

@@ -369,7 +369,7 @@ func TestHeaderLabels(t *testing.T) {
 	u := NewUI(g)
 	u.sortKey = sortNone
 	h := stripANSI(u.headerLine(60))
-	if !strings.HasSuffix(h, "  CLOSURE     ADDED  NAR-SIZE  DEPENDENCIES") {
+	if !strings.HasSuffix(h, "  CLOSURE     ADDED  NAR-SIZE  DEPENDENCIES ") {
 		t.Errorf("header = %q", h)
 	}
 	u.setSort(sortClosure)
@@ -426,7 +426,7 @@ func TestToggleReverse(t *testing.T) {
 	if u.tree.Path != "/s/big" {
 		t.Errorf("reverse tree root = %s, want /s/big", u.tree.Path)
 	}
-	if h := stripANSI(u.topBorder()); !strings.HasPrefix(h, "┌─ Dependents graph") {
+	if h := stripANSI(u.topBorder(false)); !strings.HasPrefix(h, "┌── Dependents graph") {
 		t.Errorf("top border = %q, want Dependents graph prefix", h)
 	}
 
@@ -442,7 +442,7 @@ func TestToggleReverse(t *testing.T) {
 	if u.sel != u.tree || u.sel.Path != "/s/root" {
 		t.Errorf("sel = %v, want re-rooted node", u.sel)
 	}
-	if h := stripANSI(u.topBorder()); !strings.HasPrefix(h, "┌─ Dependency graph") {
+	if h := stripANSI(u.topBorder(false)); !strings.HasPrefix(h, "┌── Dependency graph") {
 		t.Errorf("top border = %q, want Dependency graph prefix", h)
 	}
 
@@ -464,7 +464,7 @@ func TestToggleReverse(t *testing.T) {
 	if u.tree.Path != g.Root || u.sel != u.tree {
 		t.Errorf("forward tree root = %s sel = %v", u.tree.Path, u.sel)
 	}
-	if h := stripANSI(u.topBorder()); !strings.HasPrefix(h, "┌─ Dependency graph") {
+	if h := stripANSI(u.topBorder(false)); !strings.HasPrefix(h, "┌── Dependency graph") {
 		t.Errorf("top border = %q, want Dependency graph prefix", h)
 	}
 	if strings.Contains(stripANSI(u.statusLine()), "p reverse") {
@@ -500,7 +500,7 @@ func TestToggleReverseAll(t *testing.T) {
 	if u.sel != u.rows[0].Node {
 		t.Errorf("sel = %v, want first top-level row", u.sel)
 	}
-	if h := stripANSI(u.topBorder()); !strings.HasPrefix(h, "┌─ Dependents graph") {
+	if h := stripANSI(u.topBorder(false)); !strings.HasPrefix(h, "┌── Dependents graph") {
 		t.Errorf("top border = %q, want Dependents graph prefix", h)
 	}
 	// p in the forest roots the inverted tree at the selection
@@ -560,7 +560,7 @@ func TestDepsColumn(t *testing.T) {
 
 	// root directly needs big+small, transitively also mid+leaf
 	fwd := stripANSI(u.leftLine(rows[0], 60))
-	if !strings.HasSuffix(fwd, "     4") {
+	if !strings.HasSuffix(fwd, "     4 ") {
 		t.Errorf("forward deps value = %q, want all deps of root = 4", fwd)
 	}
 	if w := runeLen(fwd); w != 60 {
@@ -569,7 +569,7 @@ func TestDepsColumn(t *testing.T) {
 	if w := runeLen(stripANSI(u.leftLine(rows[1], 60))); w != 60 {
 		t.Errorf("forward non-selected row width = %d, want 60", w)
 	}
-	if h := stripANSI(u.headerLine(60)); !strings.HasSuffix(h, "NAR-SIZE  DEPENDENCIES") {
+	if h := stripANSI(u.headerLine(60)); !strings.HasSuffix(h, "NAR-SIZE  DEPENDENCIES ") {
 		t.Errorf("forward header = %q, want DEPENDENCIES", h)
 	}
 	if w := runeLen(stripANSI(u.headerLine(60))); w != 60 {
@@ -578,7 +578,7 @@ func TestDepsColumn(t *testing.T) {
 
 	u.g.Reverse = true
 	// small is directly referenced only by root, but big depends on it too
-	if got := stripANSI(u.leftLine(rows[2], 60)); !strings.HasSuffix(got, "     2") {
+	if got := stripANSI(u.leftLine(rows[2], 60)); !strings.HasSuffix(got, "     2 ") {
 		t.Errorf("reverse deps value = %q, want all dependents of small = 2", got)
 	}
 	if w := runeLen(stripANSI(u.leftLine(rows[1], 60))); w != 60 {
@@ -635,5 +635,141 @@ func TestDepsSortFollowsMode(t *testing.T) {
 	want = []string{"/s/mmm", "/s/zzz", "/s/aaa", "/s/small", "/s/big"}
 	if got := paths(); !eqPaths(got, want) {
 		t.Errorf("reverse deps sort = %v, want %v", got, want)
+	}
+}
+
+func TestForestFirstRowCorner(t *testing.T) {
+	g := testGraph()
+	u := NewUI(g)
+	u.rows = u.tree.Visible()
+	u.handle([]byte("P"))
+	rows := u.tree.Visible()
+	if len(rows) < 2 {
+		t.Fatalf("forest rows = %d, want at least 2", len(rows))
+	}
+	if rows[0].Conn != " ┌─ " {
+		t.Errorf("forest first conn = %q, want corner", rows[0].Conn)
+	}
+	if rows[1].Conn != " ├─ " {
+		t.Errorf("forest second conn = %q, want tee", rows[1].Conn)
+	}
+
+	// forward tree keeps plain tees: the root is visible
+	u.handle([]byte("P"))
+	u.rows = u.tree.Visible()
+	rows = u.tree.Visible()
+	if len(rows) < 3 {
+		t.Fatalf("forward rows = %d, want at least 3", len(rows))
+	}
+	if rows[1].Conn != " ├─ " {
+		t.Errorf("forward first child conn = %q, want tee", rows[1].Conn)
+	}
+}
+
+func TestStatusTabConnectsAtDepth(t *testing.T) {
+	g := testGraph()
+	u := NewUI(g)
+	u.h = 4
+	u.offset = 0
+	cases := []struct {
+		row  Row
+		want string
+	}{
+		{Row{Node: &Node{Path: "/s/a"}, Prefix: "    ", Conn: " ├─ "}, "──┘"},
+		{Row{Node: &Node{Path: "/s/a"}, Prefix: " │   ", Conn: " └─ "}, "──┘"},
+		{Row{Node: &Node{Path: "/s/a"}, Conn: " ├─ "}, "──┘"},
+		{Row{Node: &Node{Path: "/s/a"}, Prefix: "    ", Conn: " └─ "}, "───"},
+		{Row{Node: &Node{Path: "/s/a"}}, "───"},
+	}
+	for _, c := range cases {
+		u.rows = []Row{c.row}
+		if got := u.statusTab(); got != c.want {
+			t.Errorf("statusTab(prefix=%q conn=%q) = %q, want %q", c.row.Prefix, c.row.Conn, got, c.want)
+		}
+	}
+}
+
+func TestTopHang(t *testing.T) {
+	g := testGraph()
+	u := NewUI(g)
+
+	// forward tree at the top: root provides for its children
+	u.rows = u.tree.Visible()
+	u.offset = 0
+	if u.topHang(nil) {
+		t.Error("root with children must not hang")
+	}
+
+	// depth-2 orphan below a bare sticky root: hangs
+	orphan := Row{Node: &Node{Path: "/s/orphan"}, Prefix: " │  ", Conn: " └─ "}
+	u.rows = []Row{{Node: u.tree}, orphan}
+	u.offset = 1
+	if !u.topHang([]Row{{Node: u.tree}}) {
+		t.Error("depth-2 orphan must hang")
+	}
+
+	// same orphan with its parent row present: connected
+	parent := Row{Node: &Node{Path: "/s/parent"}, Conn: " ├─ "}
+	u.rows = []Row{parent, orphan}
+	u.offset = 0
+	if u.topHang(nil) {
+		t.Error("orphan under a visible parent must not hang")
+	}
+
+	// forest rows hang whenever the first one is cut by scrolling
+	u.handle([]byte("P"))
+	u.rows = u.tree.Visible()
+	if len(u.rows) < 2 {
+		t.Fatal("forest rows missing")
+	}
+	u.offset = 0
+	if u.topHang(nil) {
+		t.Error("forest first row is the corner, must not hang")
+	}
+	u.offset = 1
+	if !u.topHang(nil) {
+		t.Error("scrolled forest tee must hang")
+	}
+}
+
+func TestTopBorderHangCorner(t *testing.T) {
+	g := testGraph()
+	u := NewUI(g)
+	if h := stripANSI(u.topBorder(false)); !strings.HasPrefix(h, "┌── Dependency graph") {
+		t.Errorf("plain border = %q", h)
+	}
+	if h := stripANSI(u.topBorder(true)); !strings.HasPrefix(h, "┌──┐Dependency graph") {
+		t.Errorf("hanging border = %q, want ┌──┐ before the label", h)
+	}
+	if w := runeLen(stripANSI(u.topBorder(true))); w != 80 {
+		t.Errorf("hanging border width = %d, want 80", w)
+	}
+	if w := runeLen(stripANSI(u.topBorder(false))); w != 80 {
+		t.Errorf("plain border width = %d, want 80", w)
+	}
+}
+
+func TestForestHeaderIndent(t *testing.T) {
+	g := testGraph()
+	u := NewUI(g)
+	u.rows = u.tree.Visible()
+	u.handle([]byte("P"))
+	if h := stripANSI(u.headerRow(60, false)); !strings.HasPrefix(h, "│     NAME") {
+		t.Errorf("forest header = %q, want NAME at the [+] column", h)
+	}
+	if w := runeLen(stripANSI(u.headerRow(60, false))); w != 62 {
+		t.Errorf("forest header width = %d, want 62", w)
+	}
+	if h := stripANSI(u.headerRow(60, true)); !strings.HasPrefix(h, "│  │  NAME") {
+		t.Errorf("forest hanging header = %q, want │ then NAME at the [+] column", h)
+	}
+
+	// the forward tree has a top-level row: NAME sits one space from the frame
+	u.handle([]byte("P"))
+	if h := stripANSI(u.headerRow(60, false)); !strings.HasPrefix(h, "│ NAME") {
+		t.Errorf("forward header = %q, want NAME one space from the frame", h)
+	}
+	if h := stripANSI(u.headerRow(60, true)); !strings.HasPrefix(h, "│  │NAME") {
+		t.Errorf("forward hanging header = %q, want │ before NAME", h)
 	}
 }

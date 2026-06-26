@@ -505,6 +505,16 @@ func (u *UI) render() {
 	if max := u.viewH() - 1; len(sticky) > max {
 		sticky = sticky[len(sticky)-max:]
 	}
+	hang := u.topHang(sticky)
+	if hang {
+		for i := range sticky {
+			switch rowCol2(sticky[i]) {
+			case '│', '├', '┌':
+			default:
+				sticky[i].Prefix = " │  " + sticky[i].Prefix
+			}
+		}
+	}
 	var b strings.Builder
 	if u.clearNext {
 		b.WriteString(clearScr)
@@ -517,24 +527,24 @@ func (u *UI) render() {
 		var left string
 		switch {
 		case r == 0:
-			left = u.topBorder()
+			left = u.topBorder(hang)
 		case r == 1:
-			left = fc + "│" + reset + u.headerLine(lw) + fc + "│" + reset
+			left = u.headerRow(lw, hang)
 		case r == u.h-1:
 			left = u.statusLine()
 		default:
 			var line string
 			switch rowIdx := r - 2; {
 			case rowIdx < len(sticky):
-				line = u.leftLine(sticky[rowIdx], lw)
+				line = u.leftLine(sticky[rowIdx], lw-1)
 			default:
 				if idx := u.offset + rowIdx - len(sticky); idx < len(u.rows) {
-					line = u.leftLine(u.rows[idx], lw)
+					line = u.leftLine(u.rows[idx], lw-1)
 				} else {
-					line = padEnd("", lw)
+					line = padEnd("", lw-1)
 				}
 			}
-			left = fc + "│" + reset + line + fc + "│" + reset
+			left = fc + "│ " + reset + line + fc + "│" + reset
 		}
 		b.WriteString(left)
 		if r < u.h-1 {
@@ -547,19 +557,23 @@ func (u *UI) render() {
 	os.Stdout.WriteString(b.String())
 }
 
-func (u *UI) topBorder() string {
-	title := " Dependency graph"
+func (u *UI) topBorder(hang bool) string {
+	title := "Dependency graph"
 	if u.g.Reverse {
-		title = " Dependents graph"
+		title = "Dependents graph"
 	}
 	color := white
 	if u.reverse {
 		color = orange
 	}
-	if pad := u.w - runeLen(title) - 4; pad < 0 {
-		title = truncate(title, u.w-4)
+	sep := " "
+	if hang {
+		sep = "┐"
 	}
-	pad := u.w - runeLen(title) - 4
+	if pad := u.w - runeLen(title) - 6; pad < 0 {
+		title = truncate(title, u.w-6)
+	}
+	pad := u.w - runeLen(title) - 6
 	if pad < 0 {
 		pad = 0
 	}
@@ -569,7 +583,7 @@ func (u *UI) topBorder() string {
 	} else {
 		tp = color + title
 	}
-	return u.frameCol() + "┌─" + reset + tp + reset + u.frameCol() + " " +
+	return u.frameCol() + "┌──" + sep + reset + tp + reset + u.frameCol() + " " +
 		strings.Repeat("─", pad) + "┐" + reset
 }
 
@@ -609,7 +623,7 @@ func (u *UI) colLabel(text, letter string, key int) headerLabel {
 
 func (u *UI) headerLine(lw int) string {
 	depsLbl, depsW := u.depsCol()
-	metaW := 9 + 1 + 9 + 1 + 9 + 1 + depsW
+	metaW := 9 + 1 + 9 + 1 + 9 + 1 + depsW + 1
 	cl := u.colLabel("CLOSURE", "C", sortClosure)
 	added := u.colLabel("ADDED", "A", sortAdded)
 	nar := u.colLabel("NAR-SIZE", "S", sortNar)
@@ -636,7 +650,7 @@ func (u *UI) headerLine(lw int) string {
 		}
 		fw = runeLen(lbl) + runeLen(q) + runeLen(cur)
 	}
-	meta := cl.padStart(9) + " " + added.padStart(9) + " " + nar.padStart(9) + " " + deps.padStart(depsW)
+	meta := cl.padStart(9) + " " + added.padStart(9) + " " + nar.padStart(9) + " " + deps.padStart(depsW) + " "
 	if fw == 0 {
 		return bold + name.pad(lw-metaW) + meta + reset
 	}
@@ -645,6 +659,29 @@ func (u *UI) headerLine(lw int) string {
 		pad = 1
 	}
 	return bold + name.s + fs + strings.Repeat(" ", pad) + meta + reset
+}
+
+// headerRow is the header line between the frame bars, indented one
+// space from the frame like the tree rows. In the forest there is no
+// top-level row, so NAME is indented to the [+] column. When hang is
+// set the tree line continues through the header, so a │ is drawn in
+// the continuation column before the label.
+func (u *UI) headerRow(lw int, hang bool) string {
+	indent := 1
+	if u.tree.Hidden {
+		indent = 5
+	}
+	var hdr string
+	if hang {
+		pad := indent - 3
+		if pad < 0 {
+			pad = 0
+		}
+		hdr = u.frameCol() + "  │" + reset + strings.Repeat(" ", pad) + u.headerLine(lw-3-pad)
+	} else {
+		hdr = strings.Repeat(" ", indent) + u.headerLine(lw-indent)
+	}
+	return u.frameCol() + "│" + reset + hdr + u.frameCol() + "│" + reset
 }
 
 func (u *UI) sticky(offset int) []Row {
@@ -663,6 +700,48 @@ func (u *UI) sticky(offset int) []Row {
 	return rows
 }
 
+// rowCol2 is the tree glyph a row draws in the continuation column next
+// to the frame: ├/└ for children, │ for pass-through prefixes, or a
+// blank for rows outside any branch (the tree root).
+func rowCol2(r Row) rune {
+	lead := []rune(r.Prefix + r.Conn)
+	if len(lead) > 1 {
+		return lead[1]
+	}
+	return ' '
+}
+
+// topHang reports whether the topmost tree line in the viewport is cut
+// off from its parents and must be re-attached to the top frame. That
+// happens when the line glyph of a row receives from above but nothing
+// above it provides one: rows deeper than the visible root chain and
+// all rows of the rootless forest.
+func (u *UI) topHang(sticky []Row) bool {
+	provided := false
+	for rowIdx := 0; rowIdx < u.viewH(); rowIdx++ {
+		var row Row
+		if rowIdx < len(sticky) {
+			row = sticky[rowIdx]
+		} else if idx := u.offset + rowIdx - len(sticky); idx < len(u.rows) {
+			row = u.rows[idx]
+		} else {
+			return false
+		}
+		switch c := rowCol2(row); c {
+		case '│', '├', '└':
+			if !provided && (u.tree.Hidden || runeLen(row.Prefix)/4+1 > 1) {
+				return true
+			}
+			provided = c != '└'
+		case '┌':
+			provided = true
+		default:
+			provided = false
+		}
+	}
+	return false
+}
+
 func (u *UI) leftLine(row Row, lw int) string {
 	info := u.g.Get(row.Node.Path)
 	if info == nil {
@@ -679,7 +758,7 @@ func (u *UI) leftLine(row Row, lw int) string {
 	nar := HumanSize(info.NarSize)
 	_, depsW := u.depsCol()
 	deps := strconv.Itoa(u.depsCount(row.Node.Path))
-	meta := fmt.Sprintf("%9s %9s %9s %*s", cl, added, nar, depsW, deps)
+	meta := fmt.Sprintf("%9s %9s %9s %*s ", cl, added, nar, depsW, deps)
 	nameW := lw - runeLen(meta)
 	if nameW < 1 {
 		return padEnd(truncate(name, lw), lw)
@@ -704,13 +783,13 @@ func (u *UI) leftLine(row Row, lw int) string {
 		cyan + fmt.Sprintf("%9s", cl) + reset + " " +
 		green + fmt.Sprintf("%9s", added) + reset + " " +
 		blue + fmt.Sprintf("%9s", nar) + reset + " " +
-		yell + fmt.Sprintf("%*s", depsW, deps) + reset
+		yell + fmt.Sprintf("%*s", depsW, deps) + reset + " "
 }
 
 func (u *UI) statusTab() string {
 	rowIdx := u.viewH() - 1
 	if rowIdx < 0 {
-		return "──"
+		return "───"
 	}
 	st := u.sticky(u.offset)
 	var row *Row
@@ -720,13 +799,12 @@ func (u *UI) statusTab() string {
 		row = &u.rows[idx]
 	}
 	if row == nil {
-		return "──"
+		return "───"
 	}
-	lead := []rune(row.Prefix + row.Conn)
-	if len(lead) > 1 && (lead[1] == '├' || lead[1] == '│') {
-		return "─┘"
+	if strings.ContainsRune(row.Conn, '├') || strings.ContainsRune(row.Prefix, '│') {
+		return "──┘"
 	}
-	return "──"
+	return "───"
 }
 
 func (u *UI) statusLine() string {
@@ -751,7 +829,7 @@ func (u *UI) statusLine() string {
 		for _, c := range cs {
 			sum += runeLen(c)
 		}
-		fill := u.w - sum - runeLen(helpW) - 4*n - 4
+		fill := u.w - sum - runeLen(helpW) - 4*n - 5
 		if fill < 2 {
 			continue
 		}
@@ -761,7 +839,7 @@ func (u *UI) statusLine() string {
 		}
 		return line + dashes(fill) + help + dashes(4) + fc + "┘" + reset
 	}
-	if fill := u.w - runeLen(helpW) - 8; fill >= 2 {
+	if fill := u.w - runeLen(helpW) - 9; fill >= 2 {
 		return tab + dashes(fill) + help + dashes(4) + fc + "┘" + reset
 	}
 	return fc + "└" + reset + padEnd(truncate(helpW, u.w-2), u.w-2) + fc + "┘" + reset
