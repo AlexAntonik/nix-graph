@@ -35,6 +35,14 @@ func PkgName(path string) string {
 	return rest[hashLen+1:]
 }
 
+func Hash(path string) string {
+	rest, ok := trimStore(path)
+	if !ok || len(rest) <= hashLen {
+		return ""
+	}
+	return rest[:hashLen]
+}
+
 func ShortName(path string) string {
 	rest, ok := trimStore(path)
 	if !ok || len(rest) <= hashLen+1 {

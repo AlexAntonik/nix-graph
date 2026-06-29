@@ -56,6 +56,8 @@ type UI struct {
 	filter     string
 	filterMode bool
 	helpMode   bool
+	copyMode   bool
+	flash      string
 	reverse    bool
 	forest     bool
 }
@@ -155,6 +157,23 @@ func (u *UI) handle(buf []byte) bool {
 		}
 		return false
 	}
+	u.flash = ""
+	if u.copyMode {
+		u.copyMode = false
+		for i := 0; i < len(buf); i++ {
+			switch buf[i] {
+			case 3:
+				return true
+			case 'h':
+				u.copySel("hash", Hash(u.sel.Path))
+			case 'p':
+				u.copySel("path", u.sel.Path)
+			case 'n':
+				u.copySel("name", PkgName(u.sel.Path))
+			}
+		}
+		return false
+	}
 	u.rows = u.tree.visibleRows(u.matcher())
 	for i := 0; i < len(buf); i++ {
 		if u.filterMode {
@@ -218,6 +237,8 @@ func (u *UI) handle(buf []byte) bool {
 			u.setSort(sortAdded)
 		case b == 'f' || b == 'F':
 			u.filterMode = true
+		case b == 'y':
+			u.copyMode = true
 		case b == 'p':
 			if u.reverse && !u.forest {
 				u.flip()
@@ -236,6 +257,16 @@ func (u *UI) handle(buf []byte) bool {
 	}
 	u.rows = u.tree.visibleRows(u.matcher())
 	return false
+}
+
+// copySel puts text on the clipboard and reports it in the status line
+// until the next keypress.
+func (u *UI) copySel(what, text string) {
+	if text == "" {
+		return
+	}
+	copyClipboard(text)
+	u.flash = "copied: " + what
 }
 
 // setMode switches between the forward tree (reverse=false), the p-mode
@@ -554,6 +585,9 @@ func (u *UI) render() {
 	if u.helpMode {
 		b.WriteString(u.helpOverlay())
 	}
+	if u.copyMode {
+		b.WriteString(u.copyOverlay())
+	}
 	os.Stdout.WriteString(b.String())
 }
 
@@ -823,6 +857,9 @@ func (u *UI) statusLine() string {
 		" " + fmt.Sprintf("%d paths", u.g.Size()) + " ",
 		" closure " + HumanSize(u.g.Closure(u.g.Root).Bytes) + " ",
 	}
+	if u.flash != "" {
+		cells = append(cells, " "+u.flash+" ")
+	}
 	for n := len(cells); n > 0; n-- {
 		cs := cells[:n]
 		sum := 0
@@ -834,7 +871,11 @@ func (u *UI) statusLine() string {
 			continue
 		}
 		line := tab + wt + cs[0] + reset
-		for _, c := range cs[1:] {
+		for i, c := range cs[1:] {
+			if u.flash != "" && i == len(cs)-2 {
+				line += dashes(4) + bold + cyan + c + reset
+				continue
+			}
 			line += dashes(4) + wt + c + reset
 		}
 		return line + dashes(fill) + help + dashes(4) + fc + "┘" + reset
@@ -854,14 +895,29 @@ func (u *UI) helpOverlay() string {
 		{"pgup / pgdn", "scroll by page"},
 		{"c / a / s / d / n", "sort by closure / added / size / deps / name"},
 		{"f", "filter by name"},
+		{"y", "copy hash / path / name"},
 		{"p", "flip tree at selected node"},
 		{"P", "all packages with dependents"},
 		{"esc", "exit inverted view / filter"},
 		{"?", "toggle this help"},
 		{"q", "quit"},
 	}
-	const title = "Help"
-	hint := "press any key to close"
+	return u.overlay("Help", rows, "press any key to close")
+}
+
+// copyOverlay shows what y copies from the selected node: h for the
+// store hash, p for the full store path, n for the package name.
+func (u *UI) copyOverlay() string {
+	p := u.sel.Path
+	rows := [][2]string{
+		{"h  hash", Hash(p)},
+		{"p  path", p},
+		{"n  name", PkgName(p)},
+	}
+	return u.overlay("Copy", rows, "h/p/n copies, any key closes")
+}
+
+func (u *UI) overlay(title string, rows [][2]string, hint string) string {
 	kw, maxw := 0, 0
 	for _, r := range rows {
 		if w := runeLen(r[0]); w > kw {

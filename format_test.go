@@ -42,6 +42,16 @@ func TestPkgName(t *testing.T) {
 	}
 }
 
+func TestHash(t *testing.T) {
+	path := storePrefix + "0123456789abcdefghij0123456789ab-bash-5.2-p103"
+	if got := Hash(path); got != "0123456789abcdefghij0123456789ab" {
+		t.Errorf("Hash = %q, want the 32-char store hash", got)
+	}
+	if got := Hash("/etc/hosts"); got != "" {
+		t.Errorf("Hash non-store = %q, want empty", got)
+	}
+}
+
 func TestPadEndTruncate(t *testing.T) {
 	tests := []struct {
 		s    string
