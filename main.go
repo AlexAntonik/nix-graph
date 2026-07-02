@@ -52,13 +52,7 @@ func run() error {
 	defer restore()
 
 	enterScreen()
-	msg := "nixview: building dependency tree of " + root + " "
-	if w, _, err := termSize(); err == nil {
-		msg = truncate(msg, w)
-	}
-	fmt.Print(msg)
-
-	g, err := Load(root)
+	g, err := loadGraph(root)
 	if err != nil {
 		return err
 	}
