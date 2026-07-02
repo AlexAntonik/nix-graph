@@ -14,10 +14,8 @@ import (
 const hashLen = 32
 
 type Info struct {
-	NarSize          uint64   `json:"narSize"`
-	Deriver          string   `json:"deriver"`
-	RegistrationTime int64    `json:"registrationTime"`
-	References       []string `json:"references"`
+	NarSize    uint64   `json:"narSize"`
+	References []string `json:"references"`
 
 	Direct     int `json:"-"`
 	Dependents int `json:"-"`
@@ -210,10 +208,6 @@ func (g *Graph) closureOf(path string) Closure {
 
 // Added returns the added size of path: the size of the path itself plus
 // the sizes of all transitive dependencies that are reachable only through
-// path. In other words, the cost of having that path on top of everything
-// else in the graph. It is the sum over the dominator-tree subtree of the
-// path: a dependency counts towards the path only when every route from
-// the root to it goes through the path.
 func (g *Graph) Added(path string) uint64 {
 	if g.added == nil {
 		g.buildAdded()
@@ -227,11 +221,6 @@ func (g *Graph) Added(path string) uint64 {
 	return 0
 }
 
-// buildAdded computes the dominator tree of the forward reference graph
-// rooted at Root (Cooper-Harvey-Kennedy) and accumulates nar sizes
-// bottom-up: added(p) is the total size of all paths dominated by p.
-// Store references form a DAG (self references excluded), so the reverse
-// postorder is topological and one accumulation pass suffices.
 func (g *Graph) buildAdded() {
 	g.added = make(map[string]uint64, len(g.info))
 	if _, ok := g.info[g.Root]; !ok {

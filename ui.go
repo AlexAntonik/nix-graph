@@ -259,8 +259,6 @@ func (u *UI) handle(buf []byte) bool {
 	return false
 }
 
-// copySel puts text on the clipboard and reports it in the status line
-// until the next keypress.
 func (u *UI) copySel(what, text string) {
 	if text == "" {
 		return
@@ -271,8 +269,6 @@ func (u *UI) copySel(what, text string) {
 
 // setMode switches between the forward tree (reverse=false), the p-mode
 // tree rooted at the selected node (p) and the all-packages forest (P).
-// In p-mode every p press flips the tree direction at the current
-// selection (dependents <-> dependencies); P or esc turns the mode off.
 func (u *UI) setMode(reverse, forest bool) {
 	u.reverse, u.forest, u.g.Reverse = reverse, forest, reverse
 	switch {
@@ -695,11 +691,7 @@ func (u *UI) headerLine(lw int) string {
 	return bold + name.s + fs + strings.Repeat(" ", pad) + meta + reset
 }
 
-// headerRow is the header line between the frame bars, indented one
-// space from the frame like the tree rows. In the forest there is no
-// top-level row, so NAME is indented to the [+] column. When hang is
-// set the tree line continues through the header, so a │ is drawn in
-// the continuation column before the label.
+// headerRow is the header line between the frame bars 
 func (u *UI) headerRow(lw int, hang bool) string {
 	indent := 1
 	if u.tree.Hidden {
@@ -905,8 +897,6 @@ func (u *UI) helpOverlay() string {
 	return u.overlay("Help", rows, "press any key to close")
 }
 
-// copyOverlay shows what y copies from the selected node: h for the
-// store hash, p for the full store path, n for the package name.
 func (u *UI) copyOverlay() string {
 	p := u.sel.Path
 	rows := [][2]string{

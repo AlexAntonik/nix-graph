@@ -21,7 +21,6 @@ func loadGraph(root string) (*Graph, error) {
 	return g, err
 }
 
-// spinner animates a centered loading indicator until done is closed.
 func spinner(done <-chan struct{}, msg string) {
 	start := time.Now()
 	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -43,9 +42,6 @@ func spinner(done <-chan struct{}, msg string) {
 	}
 }
 
-// loadingLine is one spinner frame: frame, elapsed time and message,
-// truncated to w columns. It returns the colored line and its plain
-// width, for centering.
 func loadingLine(frame, elapsed, msg string, w int) (string, int) {
 	msgW := w - runeLen(frame) - runeLen(elapsed) - 2
 	if msgW < 0 {
@@ -58,8 +54,6 @@ func loadingLine(frame, elapsed, msg string, w int) (string, int) {
 	return line, runeLen(frame) + 1 + runeLen(elapsed) + 1 + runeLen(msg)
 }
 
-// centerPos is the 1-based cursor position that puts a line of lw
-// columns in the middle of a w×h terminal.
 func centerPos(w, h, lw int) (row, col int) {
 	row = h / 2
 	if row < 1 {

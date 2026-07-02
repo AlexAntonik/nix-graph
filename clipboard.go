@@ -14,15 +14,9 @@ import (
 var copyClipboard = copyText
 
 // copyText places s on the clipboard: it emits an OSC 52 escape sequence,
-// which works in most modern terminals and through ssh, and, best effort,
-// writes through a local clipboard tool for terminals without OSC 52
-// support.
+// which works in most modern terminals
 func copyText(s string) {
 	fmt.Printf("\x1b]52;c;%s\x07", base64.StdEncoding.EncodeToString([]byte(s)))
-	localCopy(s)
-}
-
-func localCopy(s string) {
 	var name string
 	var args []string
 	switch {
