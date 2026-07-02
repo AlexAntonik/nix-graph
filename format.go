@@ -89,14 +89,3 @@ func padEnd(s string, w int) string {
 	}
 	return truncate(s, w)
 }
-
-func splitAt(s string, n int) (string, string) {
-	r := []rune(s)
-	if n < 0 {
-		n = 0
-	}
-	if n > len(r) {
-		n = len(r)
-	}
-	return string(r[:n]), string(r[n:])
-}
