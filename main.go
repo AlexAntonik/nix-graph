@@ -9,13 +9,9 @@ import (
 	"strings"
 )
 
-const usage = `nixview - interactive dependency tree viewer for the nix store
-
-usage:
-  nixview [path]
+const usage = `usage: nixview [path]
 
 path is a store path or profile (default: /run/current-system)
-
 `
 
 func main() {
@@ -69,22 +65,12 @@ func defaultRoot() (string, error) {
 }
 
 func resolveStore(path string) (string, error) {
-	orig := path
-	for range 8 {
-		if strings.HasPrefix(path, storePrefix) {
-			return path, nil
-		}
-		real, err := filepath.EvalSymlinks(path)
-		if err != nil {
-			return "", err
-		}
-		if real == path {
-			break
-		}
-		path = real
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
 	}
-	if strings.HasPrefix(path, storePrefix) {
-		return path, nil
+	if !strings.HasPrefix(real, storePrefix) {
+		return "", fmt.Errorf("%s does not resolve to %s*", path, storePrefix)
 	}
-	return "", fmt.Errorf("%s does not resolve to %s*", orig, storePrefix)
+	return real, nil
 }
