@@ -93,7 +93,7 @@ func enterScreen() {
 }
 
 func (u *UI) loop() error {
-	if w, h, err := termSize(); err == nil {
+	if w, h, err := termSize(); err == nil && w > 0 && h > 0 {
 		u.w, u.h = w, h
 	}
 	keys := make(chan []byte, 8)
@@ -113,7 +113,7 @@ func (u *UI) loop() error {
 				return nil
 			}
 		case <-resize:
-			if w, h, err := termSize(); err == nil {
+			if w, h, err := termSize(); err == nil && w > 0 && h > 0 {
 				u.w, u.h = w, h
 			}
 			u.clearNext = true
@@ -373,6 +373,9 @@ func (u *UI) drill() {
 }
 
 func (u *UI) up() {
+	if u.sel.Hidden {
+		return
+	}
 	if u.sel.Expanded && u.sel.Loaded && len(u.sel.Children) > 0 {
 		u.sel.Expanded = false
 		return
