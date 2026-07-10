@@ -32,7 +32,7 @@ func NewForest(g *Graph) *Node {
 }
 
 func (n *Node) Toggle(g *Graph) {
-	if n.isLeaf(g) {
+	if n.Hidden || n.isLeaf(g) {
 		return
 	}
 	if !n.Loaded {
