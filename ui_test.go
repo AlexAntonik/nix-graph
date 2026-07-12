@@ -73,6 +73,37 @@ func TestCopyFlow(t *testing.T) {
 	if !u.handle([]byte{3}) {
 		t.Error("ctrl-c in copy mode must quit")
 	}
+
+	// keys arriving in one read: y then h still copies, not collapse
+	u.handle([]byte("yh"))
+	if got != hash {
+		t.Errorf("pasted yh = %q, want %q", got, hash)
+	}
+	if u.copyMode {
+		t.Error("pasted yh should leave copy mode")
+	}
+}
+
+func TestHelpMode(t *testing.T) {
+	u := NewUI(copyTestGraph())
+	u.handle([]byte("?"))
+	if !u.helpMode {
+		t.Fatal("? should open help")
+	}
+	u.handle([]byte("j"))
+	if u.helpMode {
+		t.Error("any key should close help")
+	}
+	if u.sel != u.tree {
+		t.Error("closing key must not act on the tree")
+	}
+	if !u.handle([]byte("q")) {
+		t.Error("q should quit on the open tree")
+	}
+	u.handle([]byte("?"))
+	if !u.handle([]byte{3}) {
+		t.Error("ctrl-c in help must quit")
+	}
 }
 
 func TestCopyOverlayContent(t *testing.T) {
