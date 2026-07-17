@@ -148,19 +148,19 @@ func (u *UI) matcher() func(*Node) bool {
 }
 
 func (u *UI) handle(buf []byte) bool {
-	if u.helpMode {
-		u.helpMode = false
-		for i := 0; i < len(buf); i++ {
+	if !u.helpMode {
+		u.flash = ""
+	}
+	u.rows = u.tree.visibleRows(u.matcher())
+	for i := 0; i < len(buf); i++ {
+		switch {
+		case u.helpMode:
+			u.helpMode = false
 			if buf[i] == 3 {
 				return true
 			}
-		}
-		return false
-	}
-	u.flash = ""
-	if u.copyMode {
-		u.copyMode = false
-		for i := 0; i < len(buf); i++ {
+		case u.copyMode:
+			u.copyMode = false
 			switch buf[i] {
 			case 3:
 				return true
@@ -171,12 +171,7 @@ func (u *UI) handle(buf []byte) bool {
 			case 'n':
 				u.copySel("name", PkgName(u.sel.Path))
 			}
-		}
-		return false
-	}
-	u.rows = u.tree.visibleRows(u.matcher())
-	for i := 0; i < len(buf); i++ {
-		if u.filterMode {
+		case u.filterMode:
 			switch b := buf[i]; {
 			case b == 3:
 				return true
@@ -198,64 +193,63 @@ func (u *UI) handle(buf []byte) bool {
 					i += sz - 1
 				}
 			}
-			continue
-		}
-		switch b := buf[i]; {
-		case b == 'q' || b == 'Q' || b == 3:
-			return true
-		case b == 0x1b:
-			if i+2 < len(buf) && (buf[i+1] == '[' || buf[i+1] == 'O') {
-				u.escape(buf[i+2])
-				i += 2
-			} else if u.reverse {
-				u.setMode(false, false)
+		default:
+			switch b := buf[i]; {
+			case b == 'q' || b == 'Q' || b == 3:
+				return true
+			case b == 0x1b:
+				if i+2 < len(buf) && (buf[i+1] == '[' || buf[i+1] == 'O') {
+					u.escape(buf[i+2])
+					i += 2
+				} else if u.reverse {
+					u.setMode(false, false)
+				}
+			case b == ' ' || b == '\r' || b == '\n':
+				u.sel.Toggle(u.g)
+				u.resort()
+			case b == 'j':
+				u.move(1)
+			case b == 'k':
+				u.move(-1)
+			case b == 'l':
+				u.drill()
+			case b == 'h':
+				u.up()
+			case b == 'g':
+				u.jump(0)
+			case b == 'G':
+				u.jump(len(u.rows) - 1)
+			case b == 's':
+				u.setSort(sortNar)
+			case b == 'd':
+				u.setSort(sortDeps)
+			case b == 'n':
+				u.setSort(sortName)
+			case b == 'c':
+				u.setSort(sortClosure)
+			case b == 'a':
+				u.setSort(sortAdded)
+			case b == 'f' || b == 'F':
+				u.filterMode = true
+			case b == 'y':
+				u.copyMode = true
+			case b == 'p':
+				if u.reverse && !u.forest {
+					u.flip()
+				} else {
+					u.setMode(true, false)
+				}
+			case b == 'P':
+				if u.reverse {
+					u.setMode(false, false)
+				} else {
+					u.setMode(true, true)
+				}
+			case b == '?':
+				u.helpMode = true
 			}
-		case b == ' ' || b == '\r' || b == '\n':
-			u.sel.Toggle(u.g)
-			u.resort()
-		case b == 'j':
-			u.move(1)
-		case b == 'k':
-			u.move(-1)
-		case b == 'l':
-			u.drill()
-		case b == 'h':
-			u.up()
-		case b == 'g':
-			u.jump(0)
-		case b == 'G':
-			u.jump(len(u.rows) - 1)
-		case b == 'o' || b == 's':
-			u.setSort(sortNar)
-		case b == 'd':
-			u.setSort(sortDeps)
-		case b == 'n':
-			u.setSort(sortName)
-		case b == 'c':
-			u.setSort(sortClosure)
-		case b == 'a':
-			u.setSort(sortAdded)
-		case b == 'f' || b == 'F':
-			u.filterMode = true
-		case b == 'y':
-			u.copyMode = true
-		case b == 'p':
-			if u.reverse && !u.forest {
-				u.flip()
-			} else {
-				u.setMode(true, false)
-			}
-		case b == 'P':
-			if u.reverse {
-				u.setMode(false, false)
-			} else {
-				u.setMode(true, true)
-			}
-		case b == '?':
-			u.helpMode = true
 		}
 	}
-	u.rows = u.tree.visibleRows(u.matcher())
 	return false
 }
 
@@ -405,7 +399,7 @@ func (u *UI) setSort(k int) {
 		u.sortKey = sortNone
 	}
 	u.resort()
-	u.rows = u.tree.Visible()
+	u.rows = u.tree.visibleRows(u.matcher())
 	if idx >= 0 && idx < len(u.rows) {
 		u.sel = u.rows[idx].Node
 	}
@@ -603,11 +597,9 @@ func (u *UI) topBorder(hang bool) string {
 	if hang {
 		sep = "┐"
 	}
-	if pad := u.w - runeLen(title) - 6; pad < 0 {
-		title = truncate(title, u.w-6)
-	}
 	pad := u.w - runeLen(title) - 6
 	if pad < 0 {
+		title = truncate(title, u.w-6)
 		pad = 0
 	}
 	var tp string
@@ -926,8 +918,8 @@ func (u *UI) overlay(title string, rows [][2]string, hint string) string {
 	if w := runeLen(title) + 6; w > maxw {
 		maxw = w
 	}
-	if cap := u.w - 4; maxw > cap {
-		maxw = cap
+	if avail := u.w - 4; maxw > avail {
+		maxw = avail
 	}
 	if maxw < 1 {
 		maxw = 1
