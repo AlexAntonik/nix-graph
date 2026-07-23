@@ -163,48 +163,37 @@ func TestUISort(t *testing.T) {
 		}
 		return out
 	}
-	eq := func(got, want []string) bool {
-		if len(got) != len(want) {
-			return false
-		}
-		for i := range want {
-			if got[i] != want[i] {
-				return false
-			}
-		}
-		return true
-	}
 
 	if u.sortKey != sortNar || !u.sortDesc {
 		t.Fatalf("initial sort state = %d/%v, want sortNar/desc", u.sortKey, u.sortDesc)
 	}
 	natural := []string{"/s/big", "/s/zzz", "/s/mmm", "/s/aaa", "/s/small"}
-	if got := paths(); !eq(got, natural) {
+	if got := paths(); !eqStrs(got, natural) {
 		t.Errorf("initial order = %v, want %v", got, natural)
 	}
 
 	u.setSort(sortName)
-	if got := paths(); !eq(got, []string{"/s/zzz", "/s/small", "/s/mmm", "/s/big", "/s/aaa"}) {
+	if got := paths(); !eqStrs(got, []string{"/s/zzz", "/s/small", "/s/mmm", "/s/big", "/s/aaa"}) {
 		t.Errorf("name desc = %v", got)
 	}
 	u.setSort(sortName)
-	if got := paths(); !eq(got, []string{"/s/aaa", "/s/big", "/s/mmm", "/s/small", "/s/zzz"}) {
+	if got := paths(); !eqStrs(got, []string{"/s/aaa", "/s/big", "/s/mmm", "/s/small", "/s/zzz"}) {
 		t.Errorf("name asc = %v", got)
 	}
 	u.setSort(sortName)
 	if u.sortKey != sortNone {
 		t.Errorf("third press: sortKey = %d, want sortNone", u.sortKey)
 	}
-	if got := paths(); !eq(got, natural) {
+	if got := paths(); !eqStrs(got, natural) {
 		t.Errorf("off order = %v, want %v", got, natural)
 	}
 
 	u.setSort(sortDeps)
-	if got := paths(); !eq(got, []string{"/s/big", "/s/aaa", "/s/mmm", "/s/small", "/s/zzz"}) {
+	if got := paths(); !eqStrs(got, []string{"/s/big", "/s/aaa", "/s/mmm", "/s/small", "/s/zzz"}) {
 		t.Errorf("deps desc = %v", got)
 	}
 	u.setSort(sortDeps)
-	if got := paths(); !eq(got, []string{"/s/mmm", "/s/small", "/s/zzz", "/s/aaa", "/s/big"}) {
+	if got := paths(); !eqStrs(got, []string{"/s/mmm", "/s/small", "/s/zzz", "/s/aaa", "/s/big"}) {
 		t.Errorf("deps asc = %v", got)
 	}
 
@@ -218,11 +207,11 @@ func TestUISort(t *testing.T) {
 	}
 
 	u.setSort(sortClosure)
-	if got := paths(); !eq(got, []string{"/s/big", "/s/aaa", "/s/zzz", "/s/mmm", "/s/small"}) {
+	if got := paths(); !eqStrs(got, []string{"/s/big", "/s/aaa", "/s/zzz", "/s/mmm", "/s/small"}) {
 		t.Errorf("closure desc = %v", got)
 	}
 	u.setSort(sortClosure)
-	if got := paths(); !eq(got, []string{"/s/small", "/s/mmm", "/s/zzz", "/s/aaa", "/s/big"}) {
+	if got := paths(); !eqStrs(got, []string{"/s/small", "/s/mmm", "/s/zzz", "/s/aaa", "/s/big"}) {
 		t.Errorf("closure asc = %v", got)
 	}
 }
@@ -233,18 +222,6 @@ func rowPaths(rows []Row) []string {
 		out = append(out, r.Node.Path)
 	}
 	return out
-}
-
-func eqPaths(got, want []string) bool {
-	if len(got) != len(want) {
-		return false
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func TestFilterRows(t *testing.T) {
@@ -260,7 +237,7 @@ func TestFilterRows(t *testing.T) {
 
 	rows := root.visibleRows(match)
 	want := []string{"/s/root", "/s/small", "/s/small/kid2", "/s/small/kid"}
-	if got := rowPaths(rows); !eqPaths(got, want) {
+	if got := rowPaths(rows); !eqStrs(got, want) {
 		t.Fatalf("filtered rows = %v, want %v", got, want)
 	}
 	if rows[3].Conn != " └─ " {
@@ -292,7 +269,8 @@ func TestUIFilter(t *testing.T) {
 	if u.filter != "kid" || !u.filterMode {
 		t.Fatalf("typing broken: %q mode=%v", u.filter, u.filterMode)
 	}
-	if got := rowPaths(u.rows); !eqPaths(got, []string{"/s/root", "/s/small", "/s/small/kid"}) {
+	u.rows = u.tree.visibleRows(u.matcher())
+	if got := rowPaths(u.rows); !eqStrs(got, []string{"/s/root", "/s/small", "/s/small/kid"}) {
 		t.Errorf("live filtered rows = %v", got)
 	}
 	if h := stripANSI(u.headerLine(60)); !strings.Contains(h, "filter:kid▌") {
@@ -312,7 +290,7 @@ func TestUIFilter(t *testing.T) {
 	if u.filterMode || u.filter != "kid" {
 		t.Errorf("enter lock state = mode=%v filter=%q", u.filterMode, u.filter)
 	}
-	if got := rowPaths(u.rows); !eqPaths(got, []string{"/s/root", "/s/small", "/s/small/kid"}) {
+	if got := rowPaths(u.rows); !eqStrs(got, []string{"/s/root", "/s/small", "/s/small/kid"}) {
 		t.Errorf("locked rows = %v", got)
 	}
 	if h := stripANSI(u.headerLine(60)); !strings.Contains(h, "filter:kid") || strings.Contains(h, "▌") {
@@ -329,8 +307,39 @@ func TestUIFilter(t *testing.T) {
 	if u.filterMode || u.filter != "" {
 		t.Errorf("esc clear = mode=%v filter=%q", u.filterMode, u.filter)
 	}
-	if got := rowPaths(u.rows); !eqPaths(got, unfiltered) {
+	u.rows = u.tree.visibleRows(u.matcher())
+	if got := rowPaths(u.rows); !eqStrs(got, unfiltered) {
 		t.Errorf("cleared rows = %v, want %v", got, unfiltered)
+	}
+}
+
+func TestSortKeepsFilter(t *testing.T) {
+	g := testGraph()
+	g.info["/s/small/kid"] = &Info{NarSize: 3}
+	g.info["/s/small/kid2"] = &Info{NarSize: 4}
+	g.info["/s/small"].References = []string{"/s/small", "/s/small/kid", "/s/small/kid2"}
+	g.countDirect()
+
+	u := NewUI(g)
+	u.tree.Children[1].Toggle(g)
+	u.handle([]byte("f"))
+	u.handle([]byte("kid"))
+	u.handle([]byte{'\r'})
+	u.rows = u.tree.visibleRows(u.matcher())
+	u.handle([]byte("j"))
+	u.handle([]byte("j"))
+	u.handle([]byte("j"))
+	if u.sel.Path != "/s/small/kid" {
+		t.Fatalf("sel = %s, want /s/small/kid", u.sel.Path)
+	}
+
+	u.handle([]byte("n")) // sort by name while the filter is locked
+	want := []string{"/s/root", "/s/small", "/s/small/kid2", "/s/small/kid"}
+	if got := rowPaths(u.rows); !eqStrs(got, want) {
+		t.Errorf("sorted rows = %v, want filtered rows kept %v", got, want)
+	}
+	if u.sel != u.rows[3].Node || u.sel.Path != "/s/small/kid" {
+		t.Errorf("sel = %s, want cursor to stay on /s/small/kid", u.sel.Path)
 	}
 }
 
@@ -494,7 +503,7 @@ func TestToggleReverseAll(t *testing.T) {
 		t.Fatal("reverse-all tree must have hidden root")
 	}
 	want := []string{"/s/big", "/s/small", "/s/root"}
-	if got := rowPaths(u.rows); !eqPaths(got, want) {
+	if got := rowPaths(u.rows); !eqStrs(got, want) {
 		t.Errorf("top-level rows = %v, want %v", got, want)
 	}
 	if u.sel != u.rows[0].Node {
@@ -626,14 +635,14 @@ func TestDepsSortFollowsMode(t *testing.T) {
 	}
 	// transitively: big 5 (via root), aaa 2, zzz 1, mmm/small 0
 	want := []string{"/s/big", "/s/aaa", "/s/zzz", "/s/mmm", "/s/small"}
-	if got := paths(); !eqPaths(got, want) {
+	if got := paths(); !eqStrs(got, want) {
 		t.Errorf("forward deps sort = %v, want %v", got, want)
 	}
 	// transitively: mmm 4, zzz 3, aaa/small 2, big 1
 	u.g.Reverse = true
 	u.resort()
 	want = []string{"/s/mmm", "/s/zzz", "/s/aaa", "/s/small", "/s/big"}
-	if got := paths(); !eqPaths(got, want) {
+	if got := paths(); !eqStrs(got, want) {
 		t.Errorf("reverse deps sort = %v, want %v", got, want)
 	}
 }
