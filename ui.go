@@ -655,7 +655,7 @@ func (u *UI) headerLine(lw int) string {
 	deps := u.colLabel(depsLbl, "D", sortDeps)
 	name := u.colLabel("NAME", "N", sortName)
 	if lw < name.w+metaW+1 {
-		return bold + padEnd(truncate("nixview", lw), lw) + reset
+		return bold + padEnd(truncate("nix-graph", lw), lw) + reset
 	}
 	fw, fs := 0, ""
 	if u.filterMode || u.filter != "" {

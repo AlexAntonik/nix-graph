@@ -9,14 +9,17 @@ import (
 	"strings"
 )
 
-const usage = `usage: nixview [path]
+const usage = `
+Nix dependency graph tui viewer
+
+usage: nix-graph [path]
 
 path is a store path or profile (default: /run/current-system)
 `
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "nixview:", err)
+		fmt.Fprintln(os.Stderr, "nix-graph:", err)
 		os.Exit(1)
 	}
 }
