@@ -175,6 +175,9 @@ func (g *Graph) SortedRefs(path string) []string {
 }
 
 func (g *Graph) Closure(path string) Closure {
+	if g.closure == nil {
+		g.closure = make(map[string]Closure)
+	}
 	if c, ok := g.closure[path]; ok {
 		return c
 	}

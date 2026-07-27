@@ -10,7 +10,6 @@ func testGraph() *Graph {
 			"/s/big":   {NarSize: 300, References: []string{"/s/root"}},
 			"/s/small": {NarSize: 50, References: []string{"/s/small"}},
 		},
-		closure: map[string]Closure{},
 	}
 	g.countDirect()
 	return g
@@ -73,7 +72,6 @@ func addedGraph() *Graph {
 			"/s/b":    {NarSize: 200, References: []string{"/s/lib"}},
 			"/s/lib":  {NarSize: 1000, References: []string{"/s/lib"}},
 		},
-		closure: map[string]Closure{},
 	}
 	g.countDirect()
 	return g
@@ -106,7 +104,6 @@ func TestAddedDeepShared(t *testing.T) {
 			"/s/y":    {NarSize: 50, References: []string{"/s/z"}},
 			"/s/z":    {NarSize: 20},
 		},
-		closure: map[string]Closure{},
 	}
 	g.countDirect()
 	// x and z are also reachable through b, only y is unique to a
@@ -191,5 +188,33 @@ func TestParseInfoJSON(t *testing.T) {
 }`)
 	if _, err := parseInfoJSON(data); err != nil {
 		t.Fatalf("parseInfoJSON: %v", err)
+	}
+}
+
+func TestLastLine(t *testing.T) {
+	if got := lastLine("warning: x\nerror: no such path\n"); got != "error: no such path" {
+		t.Errorf("lastLine = %q, want the last line", got)
+	}
+	if got := lastLine("  \n"); got != "" {
+		t.Errorf("lastLine(blank) = %q, want empty", got)
+	}
+}
+
+func TestAddedCycle(t *testing.T) {
+	g := &Graph{
+		Root: "/s/root",
+		info: map[string]*Info{
+			"/s/root": {NarSize: 10, References: []string{"/s/a"}},
+			"/s/a":    {NarSize: 100, References: []string{"/s/b"}},
+			"/s/b":    {NarSize: 200, References: []string{"/s/a"}},
+		},
+	}
+	g.countDirect()
+	// b is reachable only through a, so a carries a and b
+	want := map[string]uint64{"/s/root": 310, "/s/a": 300, "/s/b": 200}
+	for path, size := range want {
+		if got := g.Added(path); got != size {
+			t.Errorf("Added(%s) = %d, want %d", path, got, size)
+		}
 	}
 }
