@@ -178,12 +178,6 @@ func (g *Graph) Closure(path string) Closure {
 	if c, ok := g.closure[path]; ok {
 		return c
 	}
-	c := g.closureOf(path)
-	g.closure[path] = c
-	return c
-}
-
-func (g *Graph) closureOf(path string) Closure {
 	var c Closure
 	seen := map[string]bool{path: true}
 	stack := []string{path}
@@ -203,6 +197,7 @@ func (g *Graph) closureOf(path string) Closure {
 			}
 		}
 	}
+	g.closure[path] = c
 	return c
 }
 
