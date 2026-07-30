@@ -93,16 +93,16 @@ func runNix(root string, jsonFormat bool) ([]byte, error) {
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("nix path-info: %s", lastLine(stderr.String()))
+		if msg := lastLine(stderr.String()); msg != "" {
+			return nil, fmt.Errorf("nix path-info: %s", msg)
+		}
+		return nil, fmt.Errorf("nix path-info: %v", err)
 	}
 	return out, nil
 }
 
 func lastLine(s string) string {
 	s = strings.TrimSpace(s)
-	if s == "" {
-		return "unknown error"
-	}
 	if i := strings.LastIndexByte(s, '\n'); i >= 0 {
 		s = s[i+1:]
 	}
@@ -204,8 +204,8 @@ func (g *Graph) Closure(path string) Closure {
 	return c
 }
 
-// Added returns the added size of path: the size of the path itself plus
-// the sizes of all transitive dependencies that are reachable only through
+// Added returns the added size of path: its own size plus the sizes of all
+// transitive dependencies that are reachable only through it.
 func (g *Graph) Added(path string) uint64 {
 	if g.added == nil {
 		g.buildAdded()
