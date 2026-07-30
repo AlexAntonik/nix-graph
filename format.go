@@ -8,35 +8,22 @@ import (
 
 const storePrefix = "/nix/store/"
 
-func trimStore(path string) (string, bool) {
-	if !strings.HasPrefix(path, storePrefix) {
-		return path, false
-	}
-	rest := path[len(storePrefix):]
-	if rest == "" {
-		return "", false
-	}
-	return rest, true
-}
-
+// Name strips the /nix/store/ prefix; non-store paths are returned as is.
 func Name(path string) string {
-	rest, ok := trimStore(path)
-	if !ok {
-		return path
-	}
+	rest, _ := strings.CutPrefix(path, storePrefix)
 	return rest
 }
 
 func PkgName(path string) string {
-	rest, ok := trimStore(path)
-	if !ok || len(rest) <= hashLen {
+	rest := Name(path)
+	if len(rest) <= hashLen+1 {
 		return rest
 	}
 	return rest[hashLen+1:]
 }
 
 func Hash(path string) string {
-	rest, ok := trimStore(path)
+	rest, ok := strings.CutPrefix(path, storePrefix)
 	if !ok || len(rest) <= hashLen {
 		return ""
 	}
@@ -44,8 +31,8 @@ func Hash(path string) string {
 }
 
 func ShortName(path string) string {
-	rest, ok := trimStore(path)
-	if !ok || len(rest) <= hashLen+1 {
+	rest := Name(path)
+	if len(rest) <= hashLen+1 {
 		return rest
 	}
 	return rest[:4] + "…" + rest[hashLen-2:hashLen] + " " + rest[hashLen+1:]
@@ -75,9 +62,6 @@ func truncate(s string, w int) string {
 	}
 	if runeLen(s) <= w {
 		return s
-	}
-	if w == 1 {
-		return "…"
 	}
 	r := []rune(s)
 	return string(r[:w-1]) + "…"
