@@ -8,9 +8,8 @@ import (
 func copyTestGraph() *Graph {
 	root := storePrefix + "0123456789abcdefghij0123456789ab-bash-5.2-p103"
 	return &Graph{
-		Root:    root,
-		info:    map[string]*Info{root: {NarSize: 10}},
-		closure: map[string]Closure{},
+		Root: root,
+		info: map[string]*Info{root: {NarSize: 10}},
 	}
 }
 
@@ -81,6 +80,19 @@ func TestCopyFlow(t *testing.T) {
 	}
 	if u.copyMode {
 		t.Error("pasted yh should leave copy mode")
+	}
+}
+
+func TestStatusLineNarrowFlash(t *testing.T) {
+	u := NewUI(testGraph())
+	u.flash = "copied: hash"
+	u.w = 50 // fits two cells, drops the flash
+	line := u.statusLine()
+	if strings.Contains(stripANSI(line), "copied") {
+		t.Errorf("narrow status line must drop the flash: %q", stripANSI(line))
+	}
+	if strings.Contains(line, cyan+" closure") {
+		t.Error("closure cell must not take the flash styling")
 	}
 }
 
