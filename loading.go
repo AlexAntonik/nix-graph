@@ -25,10 +25,7 @@ func spinner(done <-chan struct{}, msg string) {
 	start := time.Now()
 	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	for i := 0; ; i = (i + 1) % len(frames) {
-		w, h := 80, 24
-		if tw, th, err := termSize(); err == nil && tw > 0 && th > 0 {
-			w, h = tw, th
-		}
+		w, h := termSizeOr(80, 24)
 		elapsed := fmt.Sprintf("%.1fs", time.Since(start).Seconds())
 		line, lw := loadingLine(frames[i], elapsed, msg, w)
 		row, col := centerPos(w, h, lw)

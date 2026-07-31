@@ -93,9 +93,7 @@ func enterScreen() {
 }
 
 func (u *UI) loop() error {
-	if w, h, err := termSize(); err == nil && w > 0 && h > 0 {
-		u.w, u.h = w, h
-	}
+	u.w, u.h = termSizeOr(u.w, u.h)
 	keys := make(chan []byte, 8)
 	go readKeys(keys)
 	resize := make(chan os.Signal, 1)
@@ -113,9 +111,7 @@ func (u *UI) loop() error {
 				return nil
 			}
 		case <-resize:
-			if w, h, err := termSize(); err == nil && w > 0 && h > 0 {
-				u.w, u.h = w, h
-			}
+			u.w, u.h = termSizeOr(u.w, u.h)
 			u.clearNext = true
 		}
 	}
@@ -470,9 +466,9 @@ func (u *UI) ord(greater bool) bool {
 // dependents in the inverted one. The width leaves room for the sort arrow.
 func (u *UI) depsCol() (string, int) {
 	if u.g.Reverse {
-		return "DEPENDENTS", 11
+		return "DEPENDENTS", runeLen("DEPENDENTS") + 1
 	}
-	return "DEPENDENCIES", 13
+	return "DEPENDENCIES", runeLen("DEPENDENCIES") + 1
 }
 
 // depsCount is the number in the deps column: all transitive dependencies
@@ -686,7 +682,7 @@ func (u *UI) headerLine(lw int) string {
 	return bold + name.s + fs + strings.Repeat(" ", pad) + meta + reset
 }
 
-// headerRow is the header line between the frame bars 
+// headerRow is the header line between the frame bars
 func (u *UI) headerRow(lw int, hang bool) string {
 	indent := 1
 	if u.tree.Hidden {
@@ -859,7 +855,8 @@ func (u *UI) statusLine() string {
 		}
 		line := tab + wt + cs[0] + reset
 		for i, c := range cs[1:] {
-			if u.flash != "" && i == len(cs)-2 {
+			// the last cell is the flash only when it made the cut
+			if u.flash != "" && n == len(cells) && i == len(cs)-2 {
 				line += dashes(4) + bold + cyan + c + reset
 				continue
 			}
@@ -1015,4 +1012,13 @@ func termSize() (int, int, error) {
 		return 0, 0, errno
 	}
 	return int(ws.Col), int(ws.Row), nil
+}
+
+// termSizeOr returns the terminal size, falling back to w and h when the
+// size is unavailable.
+func termSizeOr(w, h int) (int, int) {
+	if tw, th, err := termSize(); err == nil && tw > 0 && th > 0 {
+		return tw, th
+	}
+	return w, h
 }
