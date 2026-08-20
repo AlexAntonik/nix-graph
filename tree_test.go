@@ -41,7 +41,7 @@ func TestTreeCollapse(t *testing.T) {
 	if root.Marker(g) != "[+]" {
 		t.Errorf("collapsed marker = %q, want [+]", root.Marker(g))
 	}
-	if rows := root.Visible(); len(rows) != 1 {
+	if rows := root.visibleRows(nil); len(rows) != 1 {
 		t.Errorf("collapsed visible rows = %d, want 1", len(rows))
 	}
 }
@@ -50,7 +50,7 @@ func TestVisiblePrefixes(t *testing.T) {
 	g := testGraph()
 	root := NewTree(g)
 	root.Children[0].Toggle(g)
-	rows := root.Visible()
+	rows := root.visibleRows(nil)
 	if len(rows) != 3 {
 		t.Fatalf("visible rows = %d, want 3", len(rows))
 	}
@@ -91,7 +91,7 @@ func TestBarUnderLastCorner(t *testing.T) {
 	big.Toggle(g)
 	small.Toggle(g)
 	small.Children[0].Toggle(g)
-	rows := root.Visible()
+	rows := root.visibleRows(nil)
 
 	prefixOf := func(n *Node) string {
 		for _, r := range rows {
@@ -127,7 +127,7 @@ func TestStickyPath(t *testing.T) {
 	small := root.Children[1]
 	small.Toggle(g)
 	small.Children[0].Toggle(g)
-	rows := root.Visible()
+	rows := root.visibleRows(nil)
 	// order: root(0), big(1), small(2), kid(3), grand(4)
 	u := &UI{g: g, tree: root, rows: rows, sel: rows[len(rows)-1].Node}
 
@@ -360,7 +360,7 @@ func stripANSI(s string) string {
 func TestLeftLineWidth(t *testing.T) {
 	g := testGraph()
 	u := NewUI(g)
-	rows := u.tree.Visible()
+	rows := u.tree.visibleRows(nil)
 	const lw = 60
 	sel := runeLen(stripANSI(u.leftLine(rows[1], lw)))
 	other := runeLen(stripANSI(u.leftLine(rows[2], lw)))
@@ -404,7 +404,7 @@ func TestHeaderLabels(t *testing.T) {
 func TestAddedColumn(t *testing.T) {
 	g := addedGraph()
 	u := NewUI(g)
-	u.rows = u.tree.Visible()
+	u.rows = u.tree.visibleRows(nil)
 	var row Row
 	for _, r := range u.rows {
 		if r.Node.Path == "/s/a" {
@@ -426,7 +426,7 @@ func TestAddedColumn(t *testing.T) {
 func TestToggleReverse(t *testing.T) {
 	g := testGraph()
 	u := NewUI(g)
-	u.rows = u.tree.Visible()
+	u.rows = u.tree.visibleRows(nil)
 	u.handle([]byte("j"))
 	u.handle([]byte("p"))
 	if !u.reverse || !u.g.Reverse {
@@ -494,7 +494,7 @@ func TestToggleReverse(t *testing.T) {
 func TestToggleReverseAll(t *testing.T) {
 	g := testGraph()
 	u := NewUI(g)
-	u.rows = u.tree.Visible()
+	u.rows = u.tree.visibleRows(nil)
 	u.handle([]byte("P"))
 	if !u.reverse || !u.g.Reverse {
 		t.Fatal("P should enable reverse-all mode")
@@ -536,7 +536,7 @@ func TestSortKeepsCursor(t *testing.T) {
 	g.countDirect()
 
 	u := NewUI(g)
-	u.rows = u.tree.Visible()
+	u.rows = u.tree.visibleRows(nil)
 	u.sel = u.rows[5].Node // natural order row 5 = /s/small
 	u.setSort(sortName)
 	if u.rows[5].Node.Path != "/s/aaa" {
@@ -560,12 +560,11 @@ func TestDepsColumn(t *testing.T) {
 			"/s/leaf":  {NarSize: 5},
 			"/s/small": {NarSize: 50, References: []string{"/s/small"}},
 		},
-		closure: map[string]Closure{},
 	}
 	g.countDirect()
 
 	u := NewUI(g)
-	rows := u.tree.Visible()
+	rows := u.tree.visibleRows(nil)
 
 	// root directly needs big+small, transitively also mid+leaf
 	fwd := stripANSI(u.leftLine(rows[0], 60))
@@ -620,7 +619,6 @@ func TestDepsSortFollowsMode(t *testing.T) {
 			"/s/mmm":   {NarSize: 30},
 			"/s/aaa":   {NarSize: 20, References: []string{"/s/mmm", "/s/zzz"}},
 		},
-		closure: map[string]Closure{},
 	}
 	g.countDirect()
 
@@ -650,9 +648,9 @@ func TestDepsSortFollowsMode(t *testing.T) {
 func TestForestFirstRowCorner(t *testing.T) {
 	g := testGraph()
 	u := NewUI(g)
-	u.rows = u.tree.Visible()
+	u.rows = u.tree.visibleRows(nil)
 	u.handle([]byte("P"))
-	rows := u.tree.Visible()
+	rows := u.tree.visibleRows(nil)
 	if len(rows) < 2 {
 		t.Fatalf("forest rows = %d, want at least 2", len(rows))
 	}
@@ -665,8 +663,8 @@ func TestForestFirstRowCorner(t *testing.T) {
 
 	// forward tree keeps plain tees: the root is visible
 	u.handle([]byte("P"))
-	u.rows = u.tree.Visible()
-	rows = u.tree.Visible()
+	u.rows = u.tree.visibleRows(nil)
+	rows = u.tree.visibleRows(nil)
 	if len(rows) < 3 {
 		t.Fatalf("forward rows = %d, want at least 3", len(rows))
 	}
@@ -703,7 +701,7 @@ func TestTopHang(t *testing.T) {
 	u := NewUI(g)
 
 	// forward tree at the top: root provides for its children
-	u.rows = u.tree.Visible()
+	u.rows = u.tree.visibleRows(nil)
 	u.offset = 0
 	if u.topHang(nil) {
 		t.Error("root with children must not hang")
@@ -727,7 +725,7 @@ func TestTopHang(t *testing.T) {
 
 	// forest rows hang whenever the first one is cut by scrolling
 	u.handle([]byte("P"))
-	u.rows = u.tree.Visible()
+	u.rows = u.tree.visibleRows(nil)
 	if len(u.rows) < 2 {
 		t.Fatal("forest rows missing")
 	}
@@ -761,7 +759,7 @@ func TestTopBorderHangCorner(t *testing.T) {
 func TestForestHeaderIndent(t *testing.T) {
 	g := testGraph()
 	u := NewUI(g)
-	u.rows = u.tree.Visible()
+	u.rows = u.tree.visibleRows(nil)
 	u.handle([]byte("P"))
 	if h := stripANSI(u.headerRow(60, false)); !strings.HasPrefix(h, "│     NAME") {
 		t.Errorf("forest header = %q, want NAME at the [+] column", h)

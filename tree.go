@@ -93,10 +93,6 @@ type Row struct {
 	Conn   string
 }
 
-func (n *Node) Visible() []Row {
-	return n.visibleRows(nil)
-}
-
 func (n *Node) visibleRows(match func(*Node) bool) []Row {
 	rows := make([]Row, 0, 8)
 	if !n.Hidden {
@@ -105,8 +101,8 @@ func (n *Node) visibleRows(match func(*Node) bool) []Row {
 	if !n.Expanded || !n.Loaded {
 		return rows
 	}
-	var walk func(*Node, string, int, bool, bool)
-	walk = func(node *Node, prefix string, depth int, last bool, first bool) {
+	var walk func(*Node, string, bool, bool)
+	walk = func(node *Node, prefix string, last bool, first bool) {
 		conn := " ├─ "
 		if first {
 			conn = " ┌─ "
@@ -119,21 +115,16 @@ func (n *Node) visibleRows(match func(*Node) bool) []Row {
 		}
 		kept := matchedChildren(node, match)
 		for i, child := range kept {
-			lastChild := i == len(kept)-1
-			childPrefix := prefix
-			if depth > 0 {
-				if last {
-					childPrefix += "    "
-				} else {
-					childPrefix += " │  "
-				}
+			childPrefix := prefix + " │  "
+			if last {
+				childPrefix = prefix + "    "
 			}
-			walk(child, childPrefix, depth+1, lastChild, false)
+			walk(child, childPrefix, i == len(kept)-1, false)
 		}
 	}
 	kept := matchedChildren(n, match)
 	for i, child := range kept {
-		walk(child, "", 1, i == len(kept)-1, n.Hidden && i == 0)
+		walk(child, "", i == len(kept)-1, n.Hidden && i == 0)
 	}
 	return rows
 }
