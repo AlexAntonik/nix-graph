@@ -27,7 +27,6 @@ func main() {
 func run() error {
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, usage)
-		flag.PrintDefaults()
 	}
 	flag.Parse()
 
