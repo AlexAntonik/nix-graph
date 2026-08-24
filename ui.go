@@ -483,13 +483,6 @@ func (u *UI) depsCount(path string) int {
 	return u.g.Closure(path).Paths - 1
 }
 
-func infoSize(i *Info) uint64 {
-	if i == nil {
-		return 0
-	}
-	return i.NarSize
-}
-
 func (u *UI) render() {
 	u.rows = u.tree.visibleRows(u.matcher())
 	if u.indexOf(u.sel) < 0 {
@@ -676,8 +669,8 @@ func (u *UI) headerLine(lw int) string {
 		return bold + name.pad(lw-metaW) + meta + reset
 	}
 	pad := lw - metaW - fw - name.w
-	if pad < 1 {
-		pad = 1
+	if pad < 0 {
+		pad = 0
 	}
 	return bold + name.s + fs + strings.Repeat(" ", pad) + meta + reset
 }
@@ -905,6 +898,8 @@ func (u *UI) overlay(title string, rows [][2]string, hint string) string {
 		if w := runeLen(r[0]); w > kw {
 			kw = w
 		}
+	}
+	for _, r := range rows {
 		if w := kw + 2 + runeLen(r[1]); w > maxw {
 			maxw = w
 		}
@@ -918,16 +913,10 @@ func (u *UI) overlay(title string, rows [][2]string, hint string) string {
 	if avail := u.w - 4; maxw > avail {
 		maxw = avail
 	}
-	if maxw < 1 {
-		maxw = 1
-	}
 	bw := maxw + 4
 	bh := len(rows) + 4
 	row := (u.h - bh) / 2
 	col := (u.w - bw) / 2
-	if row > u.h-1-bh {
-		row = u.h - 1 - bh
-	}
 	if row < 1 {
 		row = 1
 	}

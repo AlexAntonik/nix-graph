@@ -74,6 +74,8 @@ func parseInfoJSON(data []byte) (*Graph, error) {
 	return g, nil
 }
 
+// nixPathInfo prefers --json-format, which newer nix versions accept, and
+// falls back to plain --json for versions that reject the flag.
 func nixPathInfo(root string) ([]byte, error) {
 	if out, err := runNix(root, true); err == nil {
 		return out, nil
@@ -110,8 +112,9 @@ func lastLine(s string) string {
 }
 
 func (g *Graph) countDirect() {
-	if g.dependents == nil {
-		g.dependents = make(map[string][]string, len(g.info))
+	g.dependents = make(map[string][]string, len(g.info))
+	for _, info := range g.info {
+		info.Direct, info.Dependents = 0, 0
 	}
 	for path, info := range g.info {
 		for _, ref := range info.References {
@@ -128,6 +131,13 @@ func (g *Graph) countDirect() {
 
 func (g *Graph) Get(path string) *Info { return g.info[path] }
 
+func infoSize(i *Info) uint64 {
+	if i == nil {
+		return 0
+	}
+	return i.NarSize
+}
+
 func (g *Graph) Size() int { return len(g.info) }
 
 func (g *Graph) AllPaths() []string {
@@ -135,43 +145,38 @@ func (g *Graph) AllPaths() []string {
 	for p := range g.info {
 		paths = append(paths, p)
 	}
-	sort.Slice(paths, func(i, j int) bool {
-		a, b := g.info[paths[i]].NarSize, g.info[paths[j]].NarSize
-		if a != b {
-			return a > b
-		}
-		return paths[i] < paths[j]
-	})
+	g.sortBySize(paths)
 	return paths
 }
 
 func (g *Graph) SortedRefs(path string) []string {
-	var src []string
+	var refs []string
 	if g.Reverse {
-		src = g.dependents[path]
+		refs = g.dependents[path]
 	} else {
 		info := g.info[path]
 		if info == nil {
 			return nil
 		}
 		for _, ref := range info.References {
-			if ref != path {
-				if _, ok := g.info[ref]; ok {
-					src = append(src, ref)
-				}
+			if ref != path && g.info[ref] != nil {
+				refs = append(refs, ref)
 			}
 		}
 	}
-	refs := make([]string, len(src))
-	copy(refs, src)
-	sort.Slice(refs, func(i, j int) bool {
-		a, b := g.info[refs[i]].NarSize, g.info[refs[j]].NarSize
-		if a != b {
+	g.sortBySize(refs)
+	return refs
+}
+
+// sortBySize orders paths by NarSize descending, breaking ties by path.
+// All entries must be keys of g.info.
+func (g *Graph) sortBySize(paths []string) {
+	sort.Slice(paths, func(i, j int) bool {
+		if a, b := g.info[paths[i]].NarSize, g.info[paths[j]].NarSize; a != b {
 			return a > b
 		}
-		return refs[i] < refs[j]
+		return paths[i] < paths[j]
 	})
-	return refs
 }
 
 func (g *Graph) Closure(path string) Closure {
