@@ -401,6 +401,21 @@ func TestHeaderLabels(t *testing.T) {
 	}
 }
 
+func TestHeaderFilterWidth(t *testing.T) {
+	u := NewUI(testGraph())
+	u.handle([]byte("f"))
+	for _, s := range []string{"k", "kid", "a-very-long-filter-string"} {
+		u.handle([]byte(s))
+		if w := runeLen(stripANSI(u.headerLine(60))); w != 60 {
+			t.Errorf("header width with filter %q = %d, want 60", u.filter, w)
+		}
+	}
+	u.handle([]byte{'\r'})
+	if w := runeLen(stripANSI(u.headerLine(60))); w != 60 {
+		t.Errorf("locked header width = %d, want 60", w)
+	}
+}
+
 func TestAddedColumn(t *testing.T) {
 	g := addedGraph()
 	u := NewUI(g)

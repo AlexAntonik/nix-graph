@@ -173,6 +173,29 @@ func eqStrs(a, b []string) bool {
 	return true
 }
 
+func TestCountDirectIdempotent(t *testing.T) {
+	g := testGraph()
+	g.countDirect()
+	if deps := g.dependents["/s/root"]; len(deps) != 1 || deps[0] != "/s/big" {
+		t.Fatalf("dependents(root) = %v, want [/s/big]", deps)
+	}
+	if got := g.Get("/s/big").Direct; got != 1 {
+		t.Errorf("Direct(big) = %d, want 1", got)
+	}
+}
+
+func TestAddedOutsideRootClosure(t *testing.T) {
+	g := addedGraph()
+	g.info["/s/island"] = &Info{NarSize: 42}
+	// unreachable from the root: Added falls back to the node's own size
+	if got := g.Added("/s/island"); got != 42 {
+		t.Errorf("Added(island) = %d, want 42", got)
+	}
+	if got := g.Added("/s/missing"); got != 0 {
+		t.Errorf("Added(unknown path) = %d, want 0", got)
+	}
+}
+
 func TestParseInfoJSON(t *testing.T) {
 	data := []byte(`{
   "/nix/store/aaa-root": {

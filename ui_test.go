@@ -118,6 +118,15 @@ func TestHelpMode(t *testing.T) {
 	}
 }
 
+func TestOverlayKeepsWideValues(t *testing.T) {
+	u := &UI{w: 80, h: 24}
+	val := strings.Repeat("x", 30)
+	o := stripANSI(u.overlay("T", [][2]string{{"a", val}, {"abcdefghijklmnop", "v"}}, "hint"))
+	if !strings.Contains(o, val) {
+		t.Errorf("overlay truncated the long first value: %q", o)
+	}
+}
+
 func TestCopyOverlayContent(t *testing.T) {
 	g := copyTestGraph()
 	u := NewUI(g)
