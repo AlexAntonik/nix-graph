@@ -237,37 +237,32 @@ func (g *Graph) buildAdded() {
 		path string
 		next int
 	}
-	var post []string
 	stack := []frame{{g.Root, 0}}
+	var post []string
 	for len(stack) > 0 {
 		f := &stack[len(stack)-1]
-		info := g.info[f.path]
-		moved := false
-		for info != nil && f.next < len(info.References) {
-			ref := info.References[f.next]
-			f.next++
-			if ref == f.path || seen[ref] || g.info[ref] == nil {
-				continue
-			}
-			seen[ref] = true
-			stack = append(stack, frame{ref, 0})
-			moved = true
-			break
-		}
-		if !moved {
+		refs := g.info[f.path].References
+		if f.next == len(refs) {
 			post = append(post, f.path)
 			stack = stack[:len(stack)-1]
+			continue
 		}
+		ref := refs[f.next]
+		f.next++
+		if ref == f.path || seen[ref] || g.info[ref] == nil {
+			continue
+		}
+		seen[ref] = true
+		stack = append(stack, frame{ref, 0})
 	}
 
 	n := len(post)
 	rpo := make([]string, n)
 	idx := make(map[string]int, n)
 	for i, p := range post {
-		rpo[n-1-i] = p
-	}
-	for i, p := range rpo {
-		idx[p] = i
+		j := n - 1 - i
+		rpo[j] = p
+		idx[p] = j
 	}
 
 	preds := make([][]int, n)
