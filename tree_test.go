@@ -416,6 +416,19 @@ func TestHeaderFilterWidth(t *testing.T) {
 	}
 }
 
+// a header too narrow for the filter segment must drop the filter rather
+// than overflow
+func TestHeaderNarrowFilter(t *testing.T) {
+	u := NewUI(testGraph())
+	u.handle([]byte("f"))
+	u.handle([]byte("kid"))
+	for _, lw := range []int{48, 53, 58, 60} {
+		if w := runeLen(stripANSI(u.headerLine(lw))); w != lw {
+			t.Errorf("header width lw=%d with filter = %d, want %d", lw, w, lw)
+		}
+	}
+}
+
 func TestAddedColumn(t *testing.T) {
 	g := addedGraph()
 	u := NewUI(g)
