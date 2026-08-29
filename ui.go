@@ -485,18 +485,18 @@ func (u *UI) depsCount(path string) int {
 
 func (u *UI) render() {
 	u.rows = u.tree.visibleRows(u.matcher())
-	if u.indexOf(u.sel) < 0 {
+	selIdx := u.indexOf(u.sel)
+	if selIdx < 0 {
+		u.sel = u.tree
 		if len(u.rows) > 0 {
 			u.sel = u.rows[0].Node
-		} else {
-			u.sel = u.tree
+			selIdx = u.indexOf(u.sel)
 		}
 	}
 	lw := u.w - 2
 	if lw < 1 {
 		lw = 1
 	}
-	selIdx := u.indexOf(u.sel)
 	if selIdx < u.offset {
 		u.offset = selIdx
 	}
@@ -644,7 +644,7 @@ func (u *UI) headerLine(lw int) string {
 	deps := u.colLabel(depsLbl, "D", sortDeps)
 	name := u.colLabel("NAME", "N", sortName)
 	if lw < name.w+metaW+1 {
-		return bold + padEnd(truncate("nix-graph", lw), lw) + reset
+		return bold + padEnd("nix-graph", lw) + reset
 	}
 	fw, fs := 0, ""
 	if u.filterMode || u.filter != "" {
@@ -653,25 +653,22 @@ func (u *UI) headerLine(lw int) string {
 		if u.filterMode {
 			cur = "▌"
 		}
-		avail := lw - metaW - name.w - runeLen(lbl) - 1
-		if avail < 1 {
-			avail = 1
+		// only draw the filter when it fits; squeezing it in would push
+		// the line past lw
+		if avail := lw - metaW - name.w - runeLen(lbl) - 1; avail >= 1 {
+			q := truncate(u.filter, avail)
+			fs = cyan + lbl + reset + bold + q
+			if cur != "" {
+				fs += cyan + cur + reset + bold
+			}
+			fw = runeLen(lbl) + runeLen(q) + runeLen(cur)
 		}
-		q := truncate(u.filter, avail)
-		fs = cyan + lbl + reset + bold + q
-		if cur != "" {
-			fs += cyan + cur + reset + bold
-		}
-		fw = runeLen(lbl) + runeLen(q) + runeLen(cur)
 	}
 	meta := cl.padStart(9) + " " + added.padStart(9) + " " + nar.padStart(9) + " " + deps.padStart(depsW) + " "
 	if fw == 0 {
 		return bold + name.pad(lw-metaW) + meta + reset
 	}
 	pad := lw - metaW - fw - name.w
-	if pad < 0 {
-		pad = 0
-	}
 	return bold + name.s + fs + strings.Repeat(" ", pad) + meta + reset
 }
 
@@ -860,7 +857,7 @@ func (u *UI) statusLine() string {
 	if fill := u.w - runeLen(helpW) - 9; fill >= 2 {
 		return tab + dashes(fill) + help + dashes(4) + fc + "┘" + reset
 	}
-	return fc + "└" + reset + padEnd(truncate(helpW, u.w-2), u.w-2) + fc + "┘" + reset
+	return fc + "└" + reset + padEnd(helpW, u.w-2) + fc + "┘" + reset
 }
 
 func (u *UI) helpOverlay() string {
