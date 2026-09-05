@@ -17,6 +17,8 @@ usage: nix-graph [path]
 path is a store path or profile (default: /run/current-system)
 `
 
+var version = "0.0.1"
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "nix-graph:", err)
@@ -25,10 +27,15 @@ func main() {
 }
 
 func run() error {
+	showVersion := flag.Bool("version", false, "print version")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, usage)
 	}
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("nix-graph", version)
+		return nil
+	}
 
 	target := flag.Arg(0)
 	if target == "" {
