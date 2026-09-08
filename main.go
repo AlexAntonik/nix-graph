@@ -15,6 +15,12 @@ Nix dependency graph tui viewer
 usage: nix-graph [path]
 
 path is a store path or profile (default: /run/current-system)
+
+Options:
+
+  --help      Print help
+  --version   Print version
+
 `
 
 var version = "0.0.1"
