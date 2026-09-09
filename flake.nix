@@ -19,11 +19,12 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          inherit (pkgs) lib;
           nix-graph = pkgs.buildGoModule {
             pname = name;
             inherit version;
 
-            src = self;
+            src = lib.cleanSource self;
             vendorHash = null;
             doCheck = true;
             env.CGO_ENABLED = "0";
@@ -36,11 +37,13 @@
             nativeBuildInputs = [ pkgs.makeWrapper ];
             postInstall = ''
               wrapProgram $out/bin/nix-graph \
-                --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.nix ]}
+                --prefix PATH : ${lib.makeBinPath [ pkgs.nix ]}
             '';
 
-            meta = with pkgs.lib; {
+            meta = with lib; {
               description = "Interactive TUI viewer for Nix dependency graphs";
+              homepage = "https://github.com/AlexAntonik/nix-graph";
+              license = licenses.mit;
               mainProgram = "nix-graph";
               platforms = platforms.linux;
             };
