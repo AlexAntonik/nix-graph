@@ -22,18 +22,34 @@ Run without installing:
 nix run github:AlexAntonik/nix-graph
 ```
 
-Install into a profile:
+Nix profile:
 
 ``` bash
 nix profile install github:Alexantonik/nix-graph
 ```
 
-NixOS (`flake.nix`):
+Flakes:
 
 ```nix
-environment.systemPackages = [
-  inputs.nix-graph.packages.${pkgs.system}.default
-];
+# flake.nix
+{
+  inputs.nix-graph.url = "github:AlexAntonik/nix-graph";
+  inputs.nix-graph.inputs.nixpkgs.follows = "nixpkgs";
+
+  outputs = { self, nixpkgs, nix-graph }: {
+    nixosConfigurations.yourhostname = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        ./configuration.nix
+        ({ pkgs, ... }: {
+          environment.systemPackages = [
+            nix-graph.packages.${pkgs.system}.nix-graph
+          ];
+        })
+      ];
+    };
+  };
+}
 ```
 
 #### Usage
