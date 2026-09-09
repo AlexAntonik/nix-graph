@@ -321,7 +321,7 @@ func (u *UI) viewH() int {
 	return 1
 }
 
-func (u *UI) frameCol() string {
+func (u *UI) frameColor() string {
 	if u.reverse {
 		return orange
 	}
@@ -462,9 +462,7 @@ func (u *UI) ord(greater bool) bool {
 	return !greater
 }
 
-// depsCol is the last meta column: dependencies in the forward graph,
-// dependents in the inverted one. The width leaves room for the sort arrow.
-func (u *UI) depsCol() (string, int) {
+func (u *UI) depsColumn() (string, int) {
 	if u.g.Reverse {
 		return "DEPENDENTS", runeLen("DEPENDENTS") + 1
 	}
@@ -535,7 +533,7 @@ func (u *UI) render() {
 	} else {
 		b.WriteString("\x1b[H")
 	}
-	fc := u.frameCol()
+	fc := u.frameColor()
 	for r := 0; r < u.h; r++ {
 		var left string
 		switch {
@@ -597,7 +595,7 @@ func (u *UI) topBorder(hang bool) string {
 	} else {
 		tp = color + title
 	}
-	return u.frameCol() + "┌──" + sep + reset + tp + reset + u.frameCol() + " " +
+	return u.frameColor() + "┌──" + sep + reset + tp + reset + u.frameColor() + " " +
 		strings.Repeat("─", pad) + "┐" + reset
 }
 
@@ -636,7 +634,7 @@ func (u *UI) colLabel(text, letter string, key int) headerLabel {
 }
 
 func (u *UI) headerLine(lw int) string {
-	depsLbl, depsW := u.depsCol()
+	depsLbl, depsW := u.depsColumn()
 	metaW := 9 + 1 + 9 + 1 + 9 + 1 + depsW + 1
 	cl := u.colLabel("CLOSURE", "C", sortClosure)
 	added := u.colLabel("ADDED", "A", sortAdded)
@@ -684,11 +682,11 @@ func (u *UI) headerRow(lw int, hang bool) string {
 		if pad < 0 {
 			pad = 0
 		}
-		hdr = u.frameCol() + "  │" + reset + strings.Repeat(" ", pad) + u.headerLine(lw-3-pad)
+		hdr = u.frameColor() + "  │" + reset + strings.Repeat(" ", pad) + u.headerLine(lw-3-pad)
 	} else {
 		hdr = strings.Repeat(" ", indent) + u.headerLine(lw-indent)
 	}
-	return u.frameCol() + "│" + reset + hdr + u.frameCol() + "│" + reset
+	return u.frameColor() + "│" + reset + hdr + u.frameColor() + "│" + reset
 }
 
 func (u *UI) sticky(offset int) []Row {
@@ -763,7 +761,7 @@ func (u *UI) leftLine(row Row, lw int) string {
 	cl := HumanSize(u.g.Closure(row.Node.Path).Bytes)
 	added := HumanSize(u.g.Added(row.Node.Path))
 	nar := HumanSize(info.NarSize)
-	_, depsW := u.depsCol()
+	_, depsW := u.depsColumn()
 	deps := strconv.Itoa(u.depsCount(row.Node.Path))
 	meta := fmt.Sprintf("%9s %9s %9s %*s ", cl, added, nar, depsW, deps)
 	nameW := lw - runeLen(meta)
@@ -815,7 +813,7 @@ func (u *UI) statusTab() string {
 }
 
 func (u *UI) statusLine() string {
-	fc := u.frameCol()
+	fc := u.frameColor()
 	wt := bold + white
 	tab := fc + "└" + u.statusTab() + reset
 	dashes := func(n int) string {
@@ -863,16 +861,16 @@ func (u *UI) statusLine() string {
 func (u *UI) helpOverlay() string {
 	rows := [][2]string{
 		{"j/k, ↑/↓", "move selection"},
-		{"space, enter", "expand / collapse"},
-		{"h / l", "collapse / drill down"},
-		{"g / G", "jump to top / bottom"},
-		{"pgup / pgdn", "scroll by page"},
-		{"c / a / s / d / n", "sort by closure / added / size / deps / name"},
+		{"space, enter", "expand/collapse"},
+		{"h/l , ←/→", "collapse/drill down"},
+		{"g/G", "jump to top/bottom"},
+		{"pgup/pgdn", "scroll by page"},
+		{"c/a/s/d/n", "sort mode switch"},
 		{"f", "filter by name"},
-		{"y", "copy hash / path / name"},
+		{"y", "copy hash/path/name"},
 		{"p", "flip tree at selected node"},
 		{"P", "all packages with dependents"},
-		{"esc", "exit inverted view / filter"},
+		{"esc", "exit inverted view/filter"},
 		{"?", "toggle this help"},
 		{"q", "quit"},
 	}
