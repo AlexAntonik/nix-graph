@@ -25,6 +25,7 @@
             inherit version;
 
             src = lib.cleanSource self;
+            subPackages = [ "cmd/nix-graph" ];
             vendorHash = null;
             doCheck = true;
             env.CGO_ENABLED = "0";
