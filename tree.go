@@ -19,6 +19,7 @@ func NewTreeAt(g *Graph, path string) *Node {
 	return root
 }
 
+// NewForest makes a hidden root holding every package in the graph (the P view).
 func NewForest(g *Graph) *Node {
 	root := &Node{Hidden: true, Expanded: true}
 	paths := g.AllPaths()
@@ -31,6 +32,7 @@ func NewForest(g *Graph) *Node {
 	return root
 }
 
+// Toggle lazy-loads children on first use, then expands or collapses the node.
 func (n *Node) Toggle(g *Graph) {
 	if n.Hidden || n.isLeaf(g) {
 		return
@@ -41,6 +43,7 @@ func (n *Node) Toggle(g *Graph) {
 	n.Expanded = !n.Expanded
 }
 
+// load fetches children of the node, dropping refs that already appear above 
 func (n *Node) load(g *Graph) {
 	refs := g.SortedRefs(n.Path)
 	children := make([]*Node, 0, len(refs))
@@ -93,6 +96,7 @@ type Row struct {
 	Conn   string
 }
 
+// visibleRows flattens the expanded tree into display rows.
 func (n *Node) visibleRows(match func(*Node) bool) []Row {
 	rows := make([]Row, 0, 8)
 	if !n.Hidden {

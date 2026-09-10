@@ -92,6 +92,7 @@ func enterScreen() {
 	fmt.Print(altEnter + hideCur + clearScr)
 }
 
+// loop is the main event loop
 func (u *UI) loop() error {
 	u.w, u.h = termSizeOr(u.w, u.h)
 	keys := make(chan []byte, 8)
@@ -143,6 +144,7 @@ func (u *UI) matcher() func(*Node) bool {
 	}
 }
 
+// handle dispatches raw input depending on the active mode; returns true for exit.
 func (u *UI) handle(buf []byte) bool {
 	if !u.helpMode {
 		u.flash = ""
@@ -289,6 +291,7 @@ func (u *UI) rebuild() {
 	u.resort()
 }
 
+// maps CSI sequences to navigation actions.
 func (u *UI) escape(c byte) {
 	switch c {
 	case 'A':
@@ -481,6 +484,7 @@ func (u *UI) depsCount(path string) int {
 	return u.g.Closure(path).Paths - 1
 }
 
+// redraws the whole screen.
 func (u *UI) render() {
 	u.rows = u.tree.visibleRows(u.matcher())
 	selIdx := u.indexOf(u.sel)
@@ -547,10 +551,10 @@ func (u *UI) render() {
 			var line string
 			switch rowIdx := r - 2; {
 			case rowIdx < len(sticky):
-				line = u.leftLine(sticky[rowIdx], lw-1)
+				line = u.rowLine(sticky[rowIdx], lw-1)
 			default:
 				if idx := u.offset + rowIdx - len(sticky); idx < len(u.rows) {
-					line = u.leftLine(u.rows[idx], lw-1)
+					line = u.rowLine(u.rows[idx], lw-1)
 				} else {
 					line = padEnd("", lw-1)
 				}
@@ -689,6 +693,8 @@ func (u *UI) headerRow(lw int, hang bool) string {
 	return u.frameColor() + "│" + reset + hdr + u.frameColor() + "│" + reset
 }
 
+// sticky returns the ancestor rows of the selection that sit above the
+// viewport offset and must remain visible.
 func (u *UI) sticky(offset int) []Row {
 	var chain []*Node
 	for n := u.sel.Parent; n != nil; n = n.Parent {
@@ -747,7 +753,8 @@ func (u *UI) topHang(sticky []Row) bool {
 	return false
 }
 
-func (u *UI) leftLine(row Row, lw int) string {
+// rowLine renders a single tree row.
+func (u *UI) rowLine(row Row, lw int) string {
 	info := u.g.Get(row.Node.Path)
 	if info == nil {
 		return padEnd("", lw)
@@ -791,6 +798,7 @@ func (u *UI) leftLine(row Row, lw int) string {
 		yell + fmt.Sprintf("%*s", depsW, deps) + reset + " "
 }
 
+// statusTab draws the ┘ tail of the status line to line up it with the last row.
 func (u *UI) statusTab() string {
 	rowIdx := u.viewH() - 1
 	if rowIdx < 0 {

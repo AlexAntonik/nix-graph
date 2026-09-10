@@ -8,7 +8,6 @@ import (
 
 const storePrefix = "/nix/store/"
 
-// Name strips the /nix/store/ prefix; non-store paths are returned as is.
 func Name(path string) string {
 	rest, _ := strings.CutPrefix(path, storePrefix)
 	return rest

@@ -362,8 +362,8 @@ func TestLeftLineWidth(t *testing.T) {
 	u := NewUI(g)
 	rows := u.tree.visibleRows(nil)
 	const lw = 60
-	sel := runeLen(stripANSI(u.leftLine(rows[1], lw)))
-	other := runeLen(stripANSI(u.leftLine(rows[2], lw)))
+	sel := runeLen(stripANSI(u.rowLine(rows[1], lw)))
+	other := runeLen(stripANSI(u.rowLine(rows[2], lw)))
 	if sel != lw || other != lw {
 		t.Errorf("row widths sel=%d other=%d, want %d/%d", sel, other, lw, lw)
 	}
@@ -443,7 +443,7 @@ func TestAddedColumn(t *testing.T) {
 		t.Fatal("row /s/a not found")
 	}
 	// a shows closure 1105 (a+lib+only), added 105 (a+only), nar 100
-	line := stripANSI(u.leftLine(row, 60))
+	line := stripANSI(u.rowLine(row, 60))
 	for _, want := range []string{"1.1K", "105B", "100B"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("line = %q, want %q in it", line, want)
@@ -595,14 +595,14 @@ func TestDepsColumn(t *testing.T) {
 	rows := u.tree.visibleRows(nil)
 
 	// root directly needs big+small, transitively also mid+leaf
-	fwd := stripANSI(u.leftLine(rows[0], 60))
+	fwd := stripANSI(u.rowLine(rows[0], 60))
 	if !strings.HasSuffix(fwd, "     4 ") {
 		t.Errorf("forward deps value = %q, want all deps of root = 4", fwd)
 	}
 	if w := runeLen(fwd); w != 60 {
 		t.Errorf("forward selected row width = %d, want 60", w)
 	}
-	if w := runeLen(stripANSI(u.leftLine(rows[1], 60))); w != 60 {
+	if w := runeLen(stripANSI(u.rowLine(rows[1], 60))); w != 60 {
 		t.Errorf("forward non-selected row width = %d, want 60", w)
 	}
 	if h := stripANSI(u.headerLine(60)); !strings.HasSuffix(h, "NAR-SIZE  DEPENDENCIES ") {
@@ -614,10 +614,10 @@ func TestDepsColumn(t *testing.T) {
 
 	u.g.Reverse = true
 	// small is directly referenced only by root, but big depends on it too
-	if got := stripANSI(u.leftLine(rows[2], 60)); !strings.HasSuffix(got, "     2 ") {
+	if got := stripANSI(u.rowLine(rows[2], 60)); !strings.HasSuffix(got, "     2 ") {
 		t.Errorf("reverse deps value = %q, want all dependents of small = 2", got)
 	}
-	if w := runeLen(stripANSI(u.leftLine(rows[1], 60))); w != 60 {
+	if w := runeLen(stripANSI(u.rowLine(rows[1], 60))); w != 60 {
 		t.Errorf("reverse non-selected row width = %d, want 60", w)
 	}
 	if h := stripANSI(u.headerLine(60)); !strings.Contains(h, "DEPENDENTS") {

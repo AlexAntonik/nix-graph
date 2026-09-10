@@ -36,6 +36,7 @@ type Graph struct {
 	added      map[string]uint64
 }
 
+// Load builds the dependency graph of root by querying nix path-info.
 func Load(root string) (*Graph, error) {
 	data, err := nixPathInfo(root)
 	if err != nil {
@@ -52,6 +53,7 @@ func Load(root string) (*Graph, error) {
 	return g, nil
 }
 
+// parseInfoJSON turns the JSON output of nix path-info into a Graph.
 func parseInfoJSON(data []byte) (*Graph, error) {
 	var raw map[string]*Info
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -83,6 +85,8 @@ func nixPathInfo(root string) ([]byte, error) {
 	return runNix(root, false)
 }
 
+// runNix shells out to nix path-info; jsonFormat toggles the experimental
+// --json-format flag used by newer nix versions.
 func runNix(root string, jsonFormat bool) ([]byte, error) {
 	args := []string{"path-info", "-r"}
 	if jsonFormat {
@@ -111,6 +115,7 @@ func lastLine(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// countDirect fills in the Direct/Dependents counters and the reverse index
 func (g *Graph) countDirect() {
 	g.dependents = make(map[string][]string, len(g.info))
 	for _, info := range g.info {
@@ -140,6 +145,7 @@ func infoSize(i *Info) uint64 {
 
 func (g *Graph) Size() int { return len(g.info) }
 
+// AllPaths returns every store path in the graph, largest first.
 func (g *Graph) AllPaths() []string {
 	paths := make([]string, 0, len(g.info))
 	for p := range g.info {
@@ -149,6 +155,7 @@ func (g *Graph) AllPaths() []string {
 	return paths
 }
 
+// SortedRefs lists the dependencies of path, or its dependents larges first.
 func (g *Graph) SortedRefs(path string) []string {
 	var refs []string
 	if g.Reverse {
@@ -179,6 +186,8 @@ func (g *Graph) sortBySize(paths []string) {
 	})
 }
 
+// Closure returns the number of paths and total bytes 
+// reachable from path including path itself.
 func (g *Graph) Closure(path string) Closure {
 	if g.closure == nil {
 		g.closure = make(map[string]Closure)
@@ -224,6 +233,9 @@ func (g *Graph) Added(path string) uint64 {
 	return 0
 }
 
+// buildAdded computes Added map for all paths in one pass: it builds
+// the dominator tree of the reference graph from the root, so a node's
+// added size is its own size plus everything reachable only through it.
 func (g *Graph) buildAdded() {
 	g.added = make(map[string]uint64, len(g.info))
 	if _, ok := g.info[g.Root]; !ok {
