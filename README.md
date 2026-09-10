@@ -70,6 +70,11 @@ nix-graph /run/current-system/sw        # the sw profile
 nix-graph /nix/store/x9...m-nix-2.34.8  # a single package closure
 ```
 
+#### Reverse view (`p`)
+
+Press `p` to flip the tree at selected node: the node you are on becomes root and the tree inverts, showing its dependents. Press `p` again and it flips back to dependencies.
+That means you can walk down from the top level to some package, flip the view, trace your way back up to see what depends on it, flip again, and keep going back and forth as much as you want. `esc` resets to the default dependency tree, and `P` opens every package as its own root.
+
 ### Contributing
 
 All contributions, issues and feature requests are welcome.
