@@ -1,5 +1,7 @@
 ## nix-graph
 
+<img width="1400" height="800" alt="demo" src="https://github.com/user-attachments/assets/233c3b8c-beab-4cfb-a104-301786a2ce47" />
+
 Interactive TUI viewer for Nix dependency graphs. Like [`nix-tree`](https://github.com/utdemir/nix-tree), but more feature rich (sort, filter, reverse (dependents) view) and not that cool (Not in Haskell).
 Written in pure Go, no dependencies; only `nix` at runtime.
 
