@@ -60,14 +60,15 @@ Flakes:
 nix-graph [path]
 ```
 
-wher `path` is a store path or profile (default: `/run/current-system`).
+where `path` is a store path, profile, or derivation (default: `/run/current-system`).
 
 Examples:
 
 ``` bash
-nix-graph                               # current system closure
-nix-graph /run/current-system/sw        # the sw profile
-nix-graph /nix/store/x9...m-nix-2.34.8  # a single package closure
+nix-graph                                             # current system closure
+nix-graph "$(which bash)"                             # current bash closure
+nix-graph /nix/store/x9...m-nix-2.34.8                # a specific package closure
+nix-graph "$(nix eval --raw 'nixpkgs#bash.drvPath')"  # a .drv: build-time graph
 ```
 
 #### Reverse view (`p`)
