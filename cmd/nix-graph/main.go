@@ -5,8 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 )
 
 const usage = `
@@ -15,6 +13,15 @@ Nix dependency graph tui viewer
 usage: nix-graph [path]
 
 path is a store path or profile (default: /run/current-system)
+a .drv store path shows the build-time graph instead of the runtime one
+
+Examples:
+
+nix-graph                                             # current system closure
+nix-graph "$(which bash)"                             # current bash closure
+nix-graph /nix/store/x9...m-nix-2.34.8                # a specific package closure
+nix-graph "$(nix eval --raw 'nixpkgs#bash.drvPath')"  # a .drv: build-time graph
+
 
 Options:
 
@@ -77,15 +84,4 @@ func defaultRoot() (string, error) {
 		}
 	}
 	return "", errors.New("no default profile found, pass a store path as argument")
-}
-
-func resolveStore(path string) (string, error) {
-	real, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return "", err
-	}
-	if !strings.HasPrefix(real, storePrefix) {
-		return "", fmt.Errorf("%s does not resolve to %s*", path, storePrefix)
-	}
-	return real, nil
 }
