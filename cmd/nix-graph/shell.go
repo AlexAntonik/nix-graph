@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"os/exec"
+	"os/signal"
 	"syscall"
 	"unsafe"
 )
@@ -32,6 +33,12 @@ func spawnShellRun(dir string) error {
 	cmd.Dir = dir
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	// the child may own the terminal while nix-graph sits in the
+	// background: without this, the tcsetpgrp below raises SIGTTOU and
+	// stops nix-graph, handing the terminal to the parent shell
+	signal.Ignore(syscall.SIGTTOU)
+	defer signal.Reset(syscall.SIGTTOU)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
