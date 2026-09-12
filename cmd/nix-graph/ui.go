@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"unicode/utf8"
 	"unsafe"
@@ -81,10 +82,22 @@ func setupTerminal() (func(), error) {
 	if err != nil {
 		return nil, err
 	}
+	var once sync.Once
 	restore := func() {
-		fmt.Print(reset + showCur + altExit)
-		restoreTerm(int(os.Stdin.Fd()), old)
+		once.Do(func() {
+			fmt.Print(reset + showCur + altExit)
+			restoreTerm(int(os.Stdin.Fd()), old)
+		})
 	}
+	// ISIG stays on, so Ctrl+C raises SIGINT at the kernel level even
+	// when the event loop is stuck
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sig
+		restore()
+		os.Exit(130)
+	}()
 	return restore, nil
 }
 
@@ -993,7 +1006,7 @@ func makeRaw(fd int) (*syscall.Termios, error) {
 	raw.Iflag &^= syscall.IGNBRK | syscall.BRKINT | syscall.PARMRK | syscall.ISTRIP |
 		syscall.INLCR | syscall.IGNCR | syscall.ICRNL | syscall.IXON
 	raw.Oflag &^= syscall.OPOST
-	raw.Lflag &^= syscall.ECHO | syscall.ECHONL | syscall.ICANON | syscall.ISIG | syscall.IEXTEN
+	raw.Lflag &^= syscall.ECHO | syscall.ECHONL | syscall.ICANON | syscall.IEXTEN
 	raw.Cflag &^= syscall.CSIZE | syscall.PARENB
 	raw.Cflag |= syscall.CS8
 	raw.Cc[syscall.VMIN] = 1
