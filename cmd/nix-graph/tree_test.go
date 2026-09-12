@@ -46,6 +46,104 @@ func TestTreeCollapse(t *testing.T) {
 	}
 }
 
+func TestExpandAll(t *testing.T) {
+	g := testGraph()
+	g.info["/s/big/deep"] = &Info{NarSize: 2}
+	g.info["/s/big/deeper"] = &Info{NarSize: 1}
+	g.info["/s/big"].References = []string{"/s/big/deep", "/s/big/deeper"}
+	g.countDirect()
+
+	root := NewTree(g)
+	root.ExpandAll(g, expandLimit)
+
+	var expanded func(*Node) bool
+	expanded = func(n *Node) bool {
+		// leaves stay collapsed, matching Toggle
+		if !n.isLeaf(g) && (!n.Expanded || !n.Loaded) {
+			return false
+		}
+		for _, c := range n.Children {
+			if !expanded(c) {
+				return false
+			}
+		}
+		return true
+	}
+	if !expanded(root) {
+		t.Fatal("expand all must load and expand every node")
+	}
+	want := []string{"/s/root", "/s/big", "/s/big/deep", "/s/big/deeper", "/s/small"}
+	if got := rowPaths(root.visibleRows(nil)); !eqStrs(got, want) {
+		t.Errorf("rows after expand all = %v, want %v", got, want)
+	}
+}
+
+func TestExpandAllLimit(t *testing.T) {
+	g := testGraph()
+	g.info["/s/small/kid"] = &Info{NarSize: 3}
+	g.info["/s/small/kid/kid2"] = &Info{NarSize: 2}
+	g.info["/s/small"].References = []string{"/s/small", "/s/small/kid"}
+	g.info["/s/small/kid"].References = []string{"/s/small/kid/kid2"}
+	g.countDirect()
+
+	root := NewTree(g)
+	if !root.ExpandAll(g, 3) {
+		t.Fatal("ExpandAll must report truncation when the limit cuts it")
+	}
+	if !root.Expanded {
+		t.Error("root must be expanded")
+	}
+	kid := root.Children[1].Children[0]
+	if kid.Expanded {
+		t.Error("node past the limit must stay collapsed")
+	}
+	want := []string{"/s/root", "/s/big", "/s/small", "/s/small/kid"}
+	if got := rowPaths(root.visibleRows(nil)); !eqStrs(got, want) {
+		t.Errorf("rows at the limit = %v, want %v", got, want)
+	}
+
+	if root.ExpandAll(g, 0) {
+		t.Error("limit 0 must mean unlimited")
+	}
+	if got := rowPaths(root.visibleRows(nil)); len(got) != 5 {
+		t.Errorf("rows with no limit = %d, want 5", len(got))
+	}
+
+	if root.ExpandAll(g, 100) {
+		t.Error("small tree must fit the limit")
+	}
+	want = []string{"/s/root", "/s/big", "/s/small", "/s/small/kid", "/s/small/kid/kid2"}
+	if got := rowPaths(root.visibleRows(nil)); !eqStrs(got, want) {
+		t.Errorf("rows after full expand = %v, want %v", got, want)
+	}
+}
+
+func TestCollapseAll(t *testing.T) {
+	g := testGraph()
+	g.info["/s/small/kid"] = &Info{NarSize: 3}
+	g.info["/s/small"].References = []string{"/s/small", "/s/small/kid"}
+	g.countDirect()
+
+	root := NewTree(g)
+	root.ExpandAll(g, expandLimit)
+	root.CollapseAll()
+
+	if !root.Expanded {
+		t.Error("collapse all must keep the root expanded")
+	}
+	want := []string{"/s/root", "/s/big", "/s/small"}
+	if got := rowPaths(root.visibleRows(nil)); !eqStrs(got, want) {
+		t.Errorf("rows after collapse all = %v, want %v", got, want)
+	}
+	small := root.Children[1]
+	if !small.Loaded || small.Expanded {
+		t.Errorf("collapsed node state = loaded %v expanded %v, want loaded and folded", small.Loaded, small.Expanded)
+	}
+	if m := small.Marker(g); m != "[+]" {
+		t.Errorf("collapsed marker = %q, want [+]", m)
+	}
+}
+
 func TestVisiblePrefixes(t *testing.T) {
 	g := testGraph()
 	root := NewTree(g)
@@ -310,6 +408,66 @@ func TestUIFilter(t *testing.T) {
 	u.rows = u.tree.visibleRows(u.matcher())
 	if got := rowPaths(u.rows); !eqStrs(got, unfiltered) {
 		t.Errorf("cleared rows = %v, want %v", got, unfiltered)
+	}
+}
+
+func TestUIExpandCollapseAll(t *testing.T) {
+	g := testGraph()
+	g.info["/s/small/kid"] = &Info{NarSize: 3}
+	g.info["/s/small"].References = []string{"/s/small", "/s/small/kid"}
+	g.countDirect()
+
+	u := NewUI(g)
+	u.handle([]byte("e"))
+	want := []string{"/s/root", "/s/big", "/s/small", "/s/small/kid"}
+	if got := rowPaths(u.rows); !eqStrs(got, want) {
+		t.Errorf("rows after e = %v, want %v", got, want)
+	}
+	if u.sel != u.tree {
+		t.Errorf("sel after e = %s, want it to stay on the root", u.sel.Path)
+	}
+
+	u.handle([]byte("E"))
+	if got := rowPaths(u.rows); !eqStrs(got, []string{"/s/root", "/s/big", "/s/small"}) {
+		t.Errorf("rows after E = %v, want top-level rows", got)
+	}
+	if u.sel != u.rows[0].Node {
+		t.Errorf("sel after E = %s, want back on the root row", u.sel.Path)
+	}
+
+	// e must re-sort freshly loaded children by the active sort key
+	u.handle([]byte("n"))
+	u.handle([]byte("e"))
+	want = []string{"/s/root", "/s/small", "/s/small/kid", "/s/big"}
+	if got := rowPaths(u.rows); !eqStrs(got, want) {
+		t.Errorf("rows after e with name sort = %v, want %v", got, want)
+	}
+
+	// the forest view expands every package as well
+	u.handle([]byte("n")) // name desc -> asc
+	u.handle([]byte("n")) // asc -> off, back to the natural size order
+	u.handle([]byte("P"))
+	if u.sel != u.rows[0].Node {
+		t.Fatalf("sel after P = %s, want the first forest row", u.sel.Path)
+	}
+	u.handle([]byte("e"))
+	// every package roots its own dependents tree, fully unfolded
+	want = []string{
+		"/s/big", "/s/root",
+		"/s/small", "/s/root", "/s/big",
+		"/s/root", "/s/big",
+		"/s/small/kid", "/s/small", "/s/root", "/s/big",
+	}
+	if got := rowPaths(u.rows); !eqStrs(got, want) {
+		t.Errorf("forest rows after e = %v, want %v", got, want)
+	}
+	u.handle([]byte("E"))
+	want = []string{"/s/big", "/s/small", "/s/root", "/s/small/kid"}
+	if got := rowPaths(u.rows); !eqStrs(got, want) {
+		t.Errorf("forest rows after E = %v, want top-level rows %v", got, want)
+	}
+	if u.sel != u.rows[0].Node {
+		t.Errorf("sel after E = %s, want the first forest row", u.sel.Path)
 	}
 }
 

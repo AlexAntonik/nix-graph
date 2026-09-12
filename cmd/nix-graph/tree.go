@@ -1,5 +1,7 @@
 package main
 
+import "math"
+
 type Node struct {
 	Path     string
 	Parent   *Node
@@ -64,6 +66,53 @@ func (n *Node) hasAncestor(path string) bool {
 		}
 	}
 	return false
+}
+
+// expandLimit caps expand-all: unfolding a dependency graph as a tree
+// duplicates shared paths, so the tree of a big closure grows to tens of mills. 
+var expandLimit = 60000
+
+// ExpandAll lazy-loads and expands the tree under n breadth-first, so the
+// top levels unfold first. 
+func (n *Node) ExpandAll(g *Graph, limit int) bool {
+	if limit < 1 {
+		limit = math.MaxInt
+	}
+	queue := []*Node{n}
+	count := 0
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = queue[1:]
+		count++
+		if count > limit {
+			return true
+		}
+		if node.isLeaf(g) {
+			continue
+		}
+		if !node.Loaded {
+			node.load(g)
+		}
+		node.Expanded = true
+		queue = append(queue, node.Children...)
+		if count+len(queue) > limit {
+			return true
+		}
+	}
+	return false
+}
+
+func (n *Node) CollapseAll() {
+	for _, c := range n.Children {
+		c.collapseAll()
+	}
+}
+
+func (n *Node) collapseAll() {
+	n.Expanded = false
+	for _, c := range n.Children {
+		c.collapseAll()
+	}
 }
 
 func (n *Node) isLeaf(g *Graph) bool {

@@ -7,7 +7,7 @@
     { self, nixpkgs }:
     let
       name = "nix-graph";
-      version = "0.0.2";
+      version = "0.0.3";
       systems = [
         "x86_64-linux"
         "aarch64-linux"

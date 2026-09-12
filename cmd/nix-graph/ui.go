@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"unicode/utf8"
 	"unsafe"
@@ -81,10 +82,22 @@ func setupTerminal() (func(), error) {
 	if err != nil {
 		return nil, err
 	}
+	var once sync.Once
 	restore := func() {
-		fmt.Print(reset + showCur + altExit)
-		restoreTerm(int(os.Stdin.Fd()), old)
+		once.Do(func() {
+			fmt.Print(reset + showCur + altExit)
+			restoreTerm(int(os.Stdin.Fd()), old)
+		})
 	}
+	// ISIG stays on, so Ctrl+C raises SIGINT at the kernel level even
+	// when the event loop is stuck
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sig
+		restore()
+		os.Exit(130)
+	}()
 	return restore, nil
 }
 
@@ -213,6 +226,10 @@ func (u *UI) handle(buf []byte) bool {
 				u.drill()
 			case b == 'h':
 				u.up()
+			case b == 'e':
+				u.expandAll()
+			case b == 'E':
+				u.collapseAll()
 			case b == 'g':
 				u.jump(0)
 			case b == 'G':
@@ -280,6 +297,25 @@ func (u *UI) flip() {
 	u.g.Reverse = !u.g.Reverse
 	u.tree = NewTreeAt(u.g, u.sel.Path)
 	u.rebuild()
+}
+
+// expandAll unfolds the view breadth-first, capped so a huge closure
+// cannot exhaust memory.
+func (u *UI) expandAll() {
+	if u.tree.ExpandAll(u.g, expandLimit) {
+		u.flash = fmt.Sprintf("expand all: stopped at %d nodes", expandLimit)
+	}
+	u.resort()
+	u.rows = u.tree.visibleRows(u.matcher())
+}
+
+// collapseAll folds the view back to its top-level rows.
+func (u *UI) collapseAll() {
+	u.tree.CollapseAll()
+	u.rows = u.tree.visibleRows(u.matcher())
+	if len(u.rows) > 0 {
+		u.sel = u.rows[0].Node
+	}
 }
 
 func (u *UI) rebuild() {
@@ -871,6 +907,7 @@ func (u *UI) helpOverlay() string {
 		{"j/k, ↑/↓", "move selection"},
 		{"space, enter", "expand/collapse"},
 		{"h/l , ←/→", "collapse/drill down"},
+		{"e/E", "expand/collapse all"},
 		{"g/G", "jump to top/bottom"},
 		{"pgup/pgdn", "scroll by page"},
 		{"c/a/s/d/n", "sort mode switch"},
@@ -969,7 +1006,7 @@ func makeRaw(fd int) (*syscall.Termios, error) {
 	raw.Iflag &^= syscall.IGNBRK | syscall.BRKINT | syscall.PARMRK | syscall.ISTRIP |
 		syscall.INLCR | syscall.IGNCR | syscall.ICRNL | syscall.IXON
 	raw.Oflag &^= syscall.OPOST
-	raw.Lflag &^= syscall.ECHO | syscall.ECHONL | syscall.ICANON | syscall.ISIG | syscall.IEXTEN
+	raw.Lflag &^= syscall.ECHO | syscall.ECHONL | syscall.ICANON | syscall.IEXTEN
 	raw.Cflag &^= syscall.CSIZE | syscall.PARENB
 	raw.Cflag |= syscall.CS8
 	raw.Cc[syscall.VMIN] = 1
