@@ -61,11 +61,13 @@ type UI struct {
 	flash      string
 	reverse    bool
 	forest     bool
+	keys       chan []byte
+	keyStop    chan struct{}
 }
 
 func NewUI(g *Graph) *UI {
 	tree := NewTree(g)
-	return &UI{
+	u := &UI{
 		g:         g,
 		tree:      tree,
 		sel:       tree,
@@ -74,7 +76,31 @@ func NewUI(g *Graph) *UI {
 		clearNext: true,
 		sortKey:   sortNar,
 		sortDesc:  true,
+		keys:      make(chan []byte, 8),
+		keyStop:   make(chan struct{}),
 	}
+	go readKeys(u.keys, u.keyStop)
+	return u
+}
+
+// savedTerm is the cooked terminal state captured at startup; suspend
+// hands it back to child programs 
+var savedTerm *syscall.Termios
+
+// leaveScreen exits the alt screen and shows the cursor.
+func leaveScreen() {
+	fmt.Print(reset + showCur + altExit)
+}
+
+// suspend returns the terminal to the state it had before the tui started.
+func suspend() {
+	leaveScreen()
+	restoreTerm(int(os.Stdin.Fd()), savedTerm)
+}
+
+// resume puts the terminal back into raw mode.
+func resume() {
+	_, _ = makeRaw(int(os.Stdin.Fd()))
 }
 
 func setupTerminal() (func(), error) {
@@ -82,10 +108,11 @@ func setupTerminal() (func(), error) {
 	if err != nil {
 		return nil, err
 	}
+	savedTerm = old
 	var once sync.Once
 	restore := func() {
 		once.Do(func() {
-			fmt.Print(reset + showCur + altExit)
+			leaveScreen()
 			restoreTerm(int(os.Stdin.Fd()), old)
 		})
 	}
@@ -108,8 +135,6 @@ func enterScreen() {
 // loop is the main event loop
 func (u *UI) loop() error {
 	u.w, u.h = termSizeOr(u.w, u.h)
-	keys := make(chan []byte, 8)
-	go readKeys(keys)
 	resize := make(chan os.Signal, 1)
 	signal.Notify(resize, syscall.SIGWINCH)
 	defer signal.Stop(resize)
@@ -117,7 +142,7 @@ func (u *UI) loop() error {
 	for {
 		u.render()
 		select {
-		case buf, ok := <-keys:
+		case buf, ok := <-u.keys:
 			if !ok {
 				return errors.New("terminal input closed")
 			}
@@ -131,17 +156,47 @@ func (u *UI) loop() error {
 	}
 }
 
-func readKeys(ch chan<- []byte) {
+func readKeys(ch chan<- []byte, stop <-chan struct{}) {
 	defer close(ch)
+	fd := int(os.Stdin.Fd())
+	epfd, err := syscall.EpollCreate1(syscall.EPOLL_CLOEXEC)
+	if err != nil {
+		return
+	}
+	defer syscall.Close(epfd)
+	ev := syscall.EpollEvent{Events: syscall.EPOLLIN}
+	if err := syscall.EpollCtl(epfd, syscall.EPOLL_CTL_ADD, fd, &ev); err != nil {
+		return
+	}
 	buf := make([]byte, 64)
+	events := make([]syscall.EpollEvent, 1)
 	for {
-		n, err := os.Stdin.Read(buf)
-		if n > 0 {
-			b := make([]byte, n)
-			copy(b, buf[:n])
-			ch <- b
+		n, err := syscall.EpollWait(epfd, events, 100)
+		if err != nil && err != syscall.EINTR {
+			return
+		}
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		if n == 0 {
+			continue
+		}
+		nn, err := syscall.Read(fd, buf)
+		if nn > 0 {
+			b := make([]byte, nn)
+			copy(b, buf[:nn])
+			select {
+			case ch <- b:
+			case <-stop:
+				return
+			}
 		}
 		if err != nil {
+			if err == syscall.EINTR || err == syscall.EAGAIN {
+				continue
+			}
 			return
 		}
 	}
@@ -234,7 +289,7 @@ func (u *UI) handle(buf []byte) bool {
 				u.jump(0)
 			case b == 'G':
 				u.jump(len(u.rows) - 1)
-			case b == 's':
+			case b == 'z':
 				u.setSort(sortNar)
 			case b == 'd':
 				u.setSort(sortDeps)
@@ -246,6 +301,8 @@ func (u *UI) handle(buf []byte) bool {
 				u.setSort(sortAdded)
 			case b == 'f' || b == 'F':
 				u.filterMode = true
+			case b == 's':
+				u.shell()
 			case b == 'y':
 				u.copyMode = true
 			case b == 'p':
@@ -910,9 +967,10 @@ func (u *UI) helpOverlay() string {
 		{"e/E", "expand/collapse all"},
 		{"g/G", "jump to top/bottom"},
 		{"pgup/pgdn", "scroll by page"},
-		{"c/a/s/d/n", "sort mode switch"},
+		{"c/a/z/d/n", "sort mode switch"},
 		{"f", "filter by name"},
 		{"y", "copy hash/path/name"},
+		{"s", "shell in selected path"},
 		{"p", "flip tree at selected node"},
 		{"P", "all packages with dependents"},
 		{"esc", "exit inverted view/filter"},
@@ -999,7 +1057,7 @@ func (u *UI) overlay(title string, rows [][2]string, hint string) string {
 
 func makeRaw(fd int) (*syscall.Termios, error) {
 	var old syscall.Termios
-	if err := ioctl(fd, syscall.TCGETS, &old); err != nil {
+	if err := ioctl(fd, syscall.TCGETS, unsafe.Pointer(&old)); err != nil {
 		return nil, err
 	}
 	raw := old
@@ -1011,7 +1069,7 @@ func makeRaw(fd int) (*syscall.Termios, error) {
 	raw.Cflag |= syscall.CS8
 	raw.Cc[syscall.VMIN] = 1
 	raw.Cc[syscall.VTIME] = 0
-	if err := ioctl(fd, syscall.TCSETS, &raw); err != nil {
+	if err := ioctl(fd, syscall.TCSETS, unsafe.Pointer(&raw)); err != nil {
 		return nil, err
 	}
 	return &old, nil
@@ -1019,12 +1077,12 @@ func makeRaw(fd int) (*syscall.Termios, error) {
 
 func restoreTerm(fd int, old *syscall.Termios) {
 	if old != nil {
-		_ = ioctl(fd, syscall.TCSETS, old)
+		_ = ioctl(fd, syscall.TCSETS, unsafe.Pointer(old))
 	}
 }
 
-func ioctl(fd int, req uint, t *syscall.Termios) error {
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(req), uintptr(unsafe.Pointer(t)))
+func ioctl(fd int, req uint, arg unsafe.Pointer) error {
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(req), uintptr(arg))
 	if errno != 0 {
 		return errno
 	}
