@@ -25,8 +25,11 @@ nix-graph "$(nix eval --raw 'nixpkgs#bash.drvPath')"  # a .drv: build-time graph
 
 Options:
 
-  --help      Print help
-  --version   Print version
+  --help                  Print help
+  --version               Print version
+  --expand-limit <limit>  Max tree nodes for expand-all (default 60000, 0 = no limit)
+                          With no limit, large closures can blow up the tree to tens of
+                          millions of nodes, causing heavy RAM usage and performance degradation.
 
 `
 
@@ -41,6 +44,7 @@ func main() {
 
 func run() error {
 	showVersion := flag.Bool("version", false, "print version")
+	flag.IntVar(&expandLimit, "expand-limit", expandLimit, "max tree nodes for expand-all, 0 for unlimited")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, usage)
 	}

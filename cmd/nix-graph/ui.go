@@ -213,6 +213,10 @@ func (u *UI) handle(buf []byte) bool {
 				u.drill()
 			case b == 'h':
 				u.up()
+			case b == 'e':
+				u.expandAll()
+			case b == 'E':
+				u.collapseAll()
 			case b == 'g':
 				u.jump(0)
 			case b == 'G':
@@ -280,6 +284,25 @@ func (u *UI) flip() {
 	u.g.Reverse = !u.g.Reverse
 	u.tree = NewTreeAt(u.g, u.sel.Path)
 	u.rebuild()
+}
+
+// expandAll unfolds the view breadth-first, capped so a huge closure
+// cannot exhaust memory.
+func (u *UI) expandAll() {
+	if u.tree.ExpandAll(u.g, expandLimit) {
+		u.flash = fmt.Sprintf("expand all: stopped at %d nodes", expandLimit)
+	}
+	u.resort()
+	u.rows = u.tree.visibleRows(u.matcher())
+}
+
+// collapseAll folds the view back to its top-level rows.
+func (u *UI) collapseAll() {
+	u.tree.CollapseAll()
+	u.rows = u.tree.visibleRows(u.matcher())
+	if len(u.rows) > 0 {
+		u.sel = u.rows[0].Node
+	}
 }
 
 func (u *UI) rebuild() {
@@ -871,6 +894,7 @@ func (u *UI) helpOverlay() string {
 		{"j/k, ↑/↓", "move selection"},
 		{"space, enter", "expand/collapse"},
 		{"h/l , ←/→", "collapse/drill down"},
+		{"e/E", "expand/collapse all"},
 		{"g/G", "jump to top/bottom"},
 		{"pgup/pgdn", "scroll by page"},
 		{"c/a/s/d/n", "sort mode switch"},
