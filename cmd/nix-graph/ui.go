@@ -735,7 +735,7 @@ func (u *UI) headerLine(lw int) string {
 	metaW := 9 + 1 + 9 + 1 + 9 + 1 + depsW + 1
 	cl := u.colLabel("CLOSURE", "C", sortClosure)
 	added := u.colLabel("ADDED", "A", sortAdded)
-	nar := u.colLabel("NAR-SIZE", "S", sortNar)
+	nar := u.colLabel("NAR-SIZE", "Z", sortNar)
 	deps := u.colLabel(depsLbl, "D", sortDeps)
 	name := u.colLabel("NAME", "N", sortName)
 	if lw < name.w+metaW+1 {
