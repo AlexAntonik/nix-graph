@@ -84,7 +84,7 @@ func NewUI(g *Graph) *UI {
 }
 
 // savedTerm is the cooked terminal state captured at startup; suspend
-// hands it back to child programs 
+// hands it back to child programs
 var savedTerm *syscall.Termios
 
 // leaveScreen exits the alt screen and shows the cursor.

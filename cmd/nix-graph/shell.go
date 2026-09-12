@@ -27,7 +27,7 @@ func tcsetpgrp(fd, pgid int) {
 // spawnShell indirected for tests
 var spawnShell = spawnShellRun
 
-// spawnShellRun runs $SHELL in dir. 
+// spawnShellRun runs $SHELL in dir.
 func spawnShellRun(dir string) error {
 	cmd := exec.Command(shellBin())
 	cmd.Dir = dir

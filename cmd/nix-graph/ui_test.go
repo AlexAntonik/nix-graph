@@ -83,6 +83,52 @@ func TestCopyFlow(t *testing.T) {
 	}
 }
 
+func TestShellFlow(t *testing.T) {
+	var dir string
+	orig := spawnShell
+	spawnShell = func(d string) error { dir = d; return nil }
+	defer func() { spawnShell = orig }()
+
+	u := NewUI(copyTestGraph())
+	u.handle([]byte("s"))
+
+	if dir != u.tree.Path {
+		t.Errorf("shell dir = %q, want the selected path %q", dir, u.tree.Path)
+	}
+	if u.flash != "" {
+		t.Errorf("flash = %q, want none on success", u.flash)
+	}
+	if u.keys == nil || u.keyStop == nil {
+		t.Error("key reader must be restarted after the shell exits")
+	}
+}
+
+func TestShellSpawnError(t *testing.T) {
+	u := NewUI(copyTestGraph())
+	u.sel.Path = storePrefix + "00000000000000000000000000000000-gone"
+	u.handle([]byte("s"))
+
+	if !strings.HasPrefix(u.flash, "shell: ") {
+		t.Errorf("flash = %q, want the spawn error with shell: prefix", u.flash)
+	}
+}
+
+func TestNarSortKey(t *testing.T) {
+	u := NewUI(copyTestGraph())
+	u.handle([]byte("z"))
+	if u.sortKey != sortNar || u.sortDesc {
+		t.Errorf("z state = %d/%v, want sortNar/asc", u.sortKey, u.sortDesc)
+	}
+	u.handle([]byte("z"))
+	if u.sortKey != sortNone {
+		t.Errorf("second z = %d, want sortNone", u.sortKey)
+	}
+	u.handle([]byte("z"))
+	if u.sortKey != sortNar || !u.sortDesc {
+		t.Errorf("third z = %d/%v, want sortNar/desc", u.sortKey, u.sortDesc)
+	}
+}
+
 func TestStatusLineNarrowFlash(t *testing.T) {
 	u := NewUI(testGraph())
 	u.flash = "copied: hash"
