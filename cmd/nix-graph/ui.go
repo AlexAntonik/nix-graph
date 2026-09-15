@@ -947,7 +947,7 @@ func (u *UI) helpOverlay() string {
 		{"g/G", "jump to top/bottom"},
 		{"pgup/pgdn", "scroll by page"},
 		{"c/a/z/d/n", "sort mode switch"},
-		{"f", "filter by name"},
+		{"f", "filter by name or hash"},
 		{"y", "copy hash/path/name"},
 		{"s", "shell in selected path"},
 		{"p", "flip tree at selected node"},
