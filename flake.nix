@@ -6,13 +6,10 @@
   outputs =
     { self, nixpkgs }:
     let
-      name = "nix-graph";
-      version = "0.0.5";
       systems = [
         "x86_64-linux"
         "aarch64-linux"
         "aarch64-darwin"
-        "x86_64-darwin"
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
     in
@@ -21,36 +18,7 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          inherit (pkgs) lib;
-          nix-graph = pkgs.buildGoModule {
-            pname = name;
-            inherit version;
-
-            src = lib.cleanSource self;
-            subPackages = [ "cmd/nix-graph" ];
-            vendorHash = null;
-            doCheck = true;
-            env.CGO_ENABLED = "0";
-            ldflags = [
-              "-s"
-              "-w"
-              "-X main.version=${version}"
-            ];
-
-            nativeBuildInputs = [ pkgs.makeWrapper ];
-            postInstall = ''
-              wrapProgram $out/bin/nix-graph \
-                --prefix PATH : ${lib.makeBinPath [ pkgs.nix ]}
-            '';
-
-            meta = with lib; {
-              description = "Interactive TUI viewer for Nix dependency graphs";
-              homepage = "https://github.com/AlexAntonik/nix-graph";
-              license = licenses.mit;
-              mainProgram = "nix-graph";
-              platforms = platforms.unix;
-            };
-          };
+          nix-graph = pkgs.callPackage ./package.nix { };
         in
         {
           inherit nix-graph;
