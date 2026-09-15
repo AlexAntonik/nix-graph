@@ -54,6 +54,25 @@ Flakes:
 }
 ```
 
+fetchTarball:
+
+```nix
+# configuration.nix
+{ config, pkgs, ... }:
+let
+  # replace this with an actual commit id or tag
+  commit = "0000000000000000000000000000000000000000";
+  nix-graph = import (builtins.fetchTarball {
+    url = "https://github.com/AlexAntonik/nix-graph/archive/${commit}.tar.gz";
+    # replace this with an actual hash
+    sha256 = "0000000000000000000000000000000000000000000000000000";
+  }) { inherit pkgs; };
+in {
+  environment.systemPackages = [ nix-graph ];
+  # or home.packages = [ nix-graph ];
+}
+```
+
 ### Usage
 
 ``` bash
