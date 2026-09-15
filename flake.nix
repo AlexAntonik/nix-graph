@@ -7,10 +7,12 @@
     { self, nixpkgs }:
     let
       name = "nix-graph";
-      version = "0.0.4";
+      version = "0.0.5";
       systems = [
         "x86_64-linux"
         "aarch64-linux"
+        "aarch64-darwin"
+        "x86_64-darwin"
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
     in
@@ -46,7 +48,7 @@
               homepage = "https://github.com/AlexAntonik/nix-graph";
               license = licenses.mit;
               mainProgram = "nix-graph";
-              platforms = platforms.linux;
+              platforms = platforms.unix;
             };
           };
         in

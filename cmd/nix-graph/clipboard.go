@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -29,6 +30,10 @@ func copyText(s string) {
 			name, args = p, []string{"-selection", "clipboard"}
 		} else if p, err := exec.LookPath("xsel"); err == nil {
 			name, args = p, []string{"--clipboard", "--input"}
+		}
+	case runtime.GOOS == "darwin":
+		if p, err := exec.LookPath("pbcopy"); err == nil {
+			name = p
 		}
 	}
 	if name == "" {

@@ -82,7 +82,11 @@ func run() error {
 }
 
 func defaultRoot() (string, error) {
-	for _, p := range []string{"/run/current-system", "/nix/var/nix/profiles/system"} {
+	for _, p := range []string{
+		"/run/current-system",
+		"/nix/var/nix/profiles/system",
+		"/nix/var/nix/profiles/default",
+	} {
 		if _, err := os.Stat(p); err == nil {
 			return p, nil
 		}
