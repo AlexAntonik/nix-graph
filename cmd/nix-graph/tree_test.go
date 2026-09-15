@@ -411,6 +411,75 @@ func TestUIFilter(t *testing.T) {
 	}
 }
 
+func TestFilterHashPrefix(t *testing.T) {
+	const hash = "Abcdefghij0123456789abcdefghij01"
+	g := testGraph()
+	p := storePrefix + hash + "-pkg"
+	g.info[p] = &Info{NarSize: 7}
+	g.info["/s/root"].References = []string{"/s/big", "/s/small", "/s/root", p}
+	g.countDirect()
+
+	u := NewUI(g)
+	u.filter = "abcde"
+	if got := rowPaths(u.tree.visibleRows(u.matcher())); !eqStrs(got, []string{"/s/root", p}) {
+		t.Errorf("hash prefix rows = %v, want %v", got, []string{"/s/root", p})
+	}
+
+	// a hash prefix that is not a name match and vice versa
+	u.filter = "bcd"
+	if got := rowPaths(u.tree.visibleRows(u.matcher())); !eqStrs(got, []string{"/s/root"}) {
+		t.Errorf("mid-hash rows = %v, want no match besides the root", got)
+	}
+	u.filter = "pkg"
+	if got := rowPaths(u.tree.visibleRows(u.matcher())); !eqStrs(got, []string{"/s/root", p}) {
+		t.Errorf("name rows = %v, want %v", got, []string{"/s/root", p})
+	}
+}
+
+func TestRowLineHighlight(t *testing.T) {
+	const hash = "Abcdefghij0123456789abcdefghij01"
+	g := testGraph()
+	p := storePrefix + hash + "-bash-bin"
+	g.info[p] = &Info{NarSize: 7}
+	g.info["/s/root"].References = []string{"/s/big", "/s/small", "/s/root", p}
+	g.countDirect()
+
+	u := NewUI(g)
+	u.sel = u.tree
+	var row Row
+	for _, r := range u.tree.visibleRows(nil) {
+		if r.Node.Path == p {
+			row = r
+		}
+	}
+	if row.Node == nil {
+		t.Fatal("row for the hash path not found")
+	}
+
+	plain := stripANSI(u.rowLine(row, 80))
+	u.filter = "bash"
+	if line := u.rowLine(row, 80); !strings.Contains(line, highlight+"bash"+reset) {
+		t.Errorf("name match not highlighted: %q", line)
+	} else if got := stripANSI(line); got != plain {
+		t.Errorf("highlight changed the text: %q vs %q", got, plain)
+	}
+
+	u.filter = "BASH"
+	if line := u.rowLine(row, 80); !strings.Contains(line, highlight+"bash"+reset) {
+		t.Errorf("case-insensitive match not highlighted: %q", line)
+	}
+
+	u.filter = "abcd"
+	if line := u.rowLine(row, 80); !strings.Contains(line, highlight+"Abcd"+reset) {
+		t.Errorf("hash prefix not highlighted: %q", line)
+	}
+
+	u.filter = ""
+	if line := u.rowLine(row, 80); strings.Count(line, highlight) != 0 {
+		t.Errorf("no filter must not highlight: %q", line)
+	}
+}
+
 func TestUIExpandCollapseAll(t *testing.T) {
 	g := testGraph()
 	g.info["/s/small/kid"] = &Info{NarSize: 3}
