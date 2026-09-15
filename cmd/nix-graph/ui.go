@@ -33,6 +33,8 @@ const (
 	rev    = "\x1b[7m"
 	white  = "\x1b[97m"
 	orange = "\x1b[38;5;208m"
+
+	highlight = bold + yell
 )
 
 const (
@@ -162,7 +164,8 @@ func (u *UI) matcher() func(*Node) bool {
 	}
 	q := strings.ToLower(u.filter)
 	return func(n *Node) bool {
-		return strings.Contains(strings.ToLower(PkgName(n.Path)), q)
+		return strings.Contains(strings.ToLower(PkgName(n.Path)), q) ||
+			strings.HasPrefix(strings.ToLower(Hash(n.Path)), q)
 	}
 }
 
@@ -706,7 +709,7 @@ func (u *UI) headerLine(lw int) string {
 		// the line past lw
 		if avail := lw - metaW - name.w - runeLen(lbl) - 1; avail >= 1 {
 			q := truncate(u.filter, avail)
-			fs = cyan + lbl + reset + bold + q
+			fs = highlight + lbl + reset + bold + q
 			if cur != "" {
 				fs += cyan + cur + reset + bold
 			}
@@ -838,11 +841,33 @@ func (u *UI) rowLine(row Row, lw int) string {
 		markColor = orange
 	}
 	body := padEnd(ShortName(row.Node.Path), nameW-runeLen(lead)-runeLen(m))
-	return structCol + lead + reset + markColor + m + reset + body +
+	return structCol + lead + reset + markColor + m + reset + markMatches(body, u.filter) +
 		cyan + fmt.Sprintf("%9s", cl) + reset + " " +
 		green + fmt.Sprintf("%9s", added) + reset + " " +
 		blue + fmt.Sprintf("%9s", nar) + reset + " " +
 		yell + fmt.Sprintf("%*s", depsW, deps) + reset + " "
+}
+
+func markMatches(s, q string) string {
+	if q == "" {
+		return s
+	}
+	lq := []rune(strings.ToLower(q))
+	lr := []rune(strings.ToLower(s))
+	rs := []rune(s)
+	var b strings.Builder
+	for i := 0; i < len(rs); {
+		if i+len(lq) <= len(lr) && string(lr[i:i+len(lq)]) == string(lq) {
+			b.WriteString(highlight)
+			b.WriteString(string(rs[i : i+len(lq)]))
+			b.WriteString(reset)
+			i += len(lq)
+			continue
+		}
+		b.WriteRune(rs[i])
+		i++
+	}
+	return b.String()
 }
 
 // statusTab draws the ┘ tail of the status line to line up it with the last row.
