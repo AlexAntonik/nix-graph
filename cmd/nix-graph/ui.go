@@ -47,24 +47,25 @@ const (
 )
 
 type UI struct {
-	g          *Graph
-	tree       *Node
-	sel        *Node
-	rows       []Row
-	offset     int
-	w, h       int
-	clearNext  bool
-	sortKey    int
-	sortDesc   bool
-	filter     string
-	filterMode bool
-	helpMode   bool
-	copyMode   bool
-	flash      string
-	reverse    bool
-	forest     bool
-	keys       chan []byte
-	keyStop    chan struct{}
+	g           *Graph
+	tree        *Node
+	sel         *Node
+	rows        []Row
+	offset      int
+	w, h        int
+	clearNext   bool
+	sortKey     int
+	sortDesc    bool
+	filter      string
+	filterMode  bool
+	filterScope map[*Node]bool
+	helpMode    bool
+	copyMode    bool
+	flash       string
+	reverse     bool
+	forest      bool
+	keys        chan []byte
+	keyStop     chan struct{}
 }
 
 func NewUI(g *Graph) *UI {
@@ -158,15 +159,24 @@ func (u *UI) loop() error {
 	}
 }
 
+// matcher builds the row filter
 func (u *UI) matcher() func(*Node) bool {
 	if u.filter == "" {
 		return nil
 	}
 	q := strings.ToLower(u.filter)
 	return func(n *Node) bool {
+		if u.filterScope != nil && !u.filterScope[n] {
+			return true
+		}
 		return strings.Contains(strings.ToLower(PkgName(n.Path)), q) ||
 			strings.HasPrefix(strings.ToLower(Hash(n.Path)), q)
 	}
+}
+
+// clearFilter drops the active filter;
+func (u *UI) clearFilter() {
+	u.filter, u.filterMode, u.filterScope = "", false, nil
 }
 
 // handle dispatches raw input depending on the active mode; returns true for exit.
@@ -202,7 +212,7 @@ func (u *UI) handle(buf []byte) bool {
 				if i+2 < len(buf) && (buf[i+1] == '[' || buf[i+1] == 'O') {
 					i += 2
 				} else {
-					u.filter, u.filterMode = "", false
+					u.clearFilter()
 				}
 			case b == '\r' || b == '\n':
 				u.filterMode = false
@@ -258,6 +268,7 @@ func (u *UI) handle(buf []byte) bool {
 				u.setSort(sortAdded)
 			case b == 'f' || b == 'F':
 				u.filterMode = true
+				u.filterScope = u.tree.visibleSet()
 			case b == 's':
 				u.shell()
 			case b == 'y':
@@ -294,6 +305,7 @@ func (u *UI) copySel(what, text string) {
 // tree rooted at the selected node (p) and the all-packages forest (P).
 func (u *UI) setMode(reverse, forest bool) {
 	u.reverse, u.forest, u.g.Reverse = reverse, forest, reverse
+	u.clearFilter()
 	switch {
 	case !reverse:
 		u.tree = NewTree(u.g)
@@ -309,6 +321,7 @@ func (u *UI) setMode(reverse, forest bool) {
 // selection: dependents become dependencies and back.
 func (u *UI) flip() {
 	u.g.Reverse = !u.g.Reverse
+	u.clearFilter()
 	u.tree = NewTreeAt(u.g, u.sel.Path)
 	u.rebuild()
 }

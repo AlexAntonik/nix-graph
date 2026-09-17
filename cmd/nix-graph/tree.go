@@ -182,6 +182,23 @@ func (n *Node) visibleRows(match func(*Node) bool) []Row {
 	return rows
 }
 
+// visibleSet collects every node the expanded tree currently shows
+func (n *Node) visibleSet() map[*Node]bool {
+	set := make(map[*Node]bool)
+	var walk func(*Node)
+	walk = func(n *Node) {
+		set[n] = true
+		if !n.Expanded || !n.Loaded {
+			return
+		}
+		for _, c := range n.Children {
+			walk(c)
+		}
+	}
+	walk(n)
+	return set
+}
+
 func matchedChildren(n *Node, match func(*Node) bool) []*Node {
 	if match == nil {
 		return n.Children
