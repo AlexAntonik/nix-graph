@@ -436,6 +436,84 @@ func TestFilterHashPrefix(t *testing.T) {
 	}
 }
 
+func TestFilterScopeFrozenBranches(t *testing.T) {
+	g := testGraph()
+	g.info["/s/small/kid"] = &Info{NarSize: 3}
+	g.info["/s/small/other"] = &Info{NarSize: 4}
+	g.info["/s/small"].References = []string{"/s/small", "/s/small/kid", "/s/small/other"}
+	g.countDirect()
+
+	t.Run("already expanded stays filtered", func(t *testing.T) {
+		u := NewUI(g)
+		u.tree.Children[1].Toggle(g) // small is expanded before the filter
+		u.handle([]byte("f"))
+		u.handle([]byte("kid"))
+		u.handle([]byte{'\r'})
+		u.rows = u.tree.visibleRows(u.matcher())
+		if got := rowPaths(u.rows); !eqStrs(got, []string{"/s/root", "/s/small", "/s/small/kid"}) {
+			t.Fatalf("locked rows = %v, want other dropped", got)
+		}
+		u.tree.Children[1].Toggle(g)
+		u.tree.Children[1].Toggle(g)
+		u.rows = u.tree.visibleRows(u.matcher())
+		if got := rowPaths(u.rows); !eqStrs(got, []string{"/s/root", "/s/small", "/s/small/kid"}) {
+			t.Errorf("rows after reopen = %v, want other still dropped", got)
+		}
+	})
+
+	t.Run("branch opened after the lock stays whole", func(t *testing.T) {
+		u := NewUI(g) // small collapsed and unloaded
+		u.handle([]byte("f"))
+		u.handle([]byte("kid"))
+		if got := rowPaths(u.tree.visibleRows(u.matcher())); !eqStrs(got, []string{"/s/root"}) {
+			t.Fatalf("rows with nothing expanded = %v, want the bare root", got)
+		}
+		u.handle([]byte{'\r'})
+		u.tree.Children[1].Toggle(g) // small opens after the lock 
+		u.rows = u.tree.visibleRows(u.matcher())
+		if got := rowPaths(u.rows); !eqStrs(got, []string{"/s/root", "/s/small", "/s/small/other", "/s/small/kid"}) {
+			t.Errorf("rows after opening small = %v, want kids unfiltered", got)
+		}
+	})
+}
+
+func TestFilterResetsOnReverse(t *testing.T) {
+	g := testGraph()
+	g.info["/s/small/kid"] = &Info{NarSize: 3}
+	g.info["/s/small"].References = []string{"/s/small", "/s/small/kid"}
+	g.countDirect()
+
+	u := NewUI(g)
+	u.tree.Children[1].Toggle(g)
+	u.handle([]byte("f"))
+	u.handle([]byte("kid"))
+	u.handle([]byte{'\r'})
+	if u.filter != "kid" || u.filterScope == nil {
+		t.Fatalf("locked filter = %q scope=%v, want kid with a scope", u.filter, u.filterScope)
+	}
+
+	u.handle([]byte("p"))
+	if u.filter != "" || u.filterMode || u.filterScope != nil {
+		t.Errorf("p reset = %q mode=%v scope=%v, want all clear", u.filter, u.filterMode, u.filterScope)
+	}
+	if got := rowPaths(u.rows); !eqStrs(got, rowPaths(u.tree.visibleRows(nil))) {
+		t.Errorf("rows after p = %v, want unfiltered %v", got, rowPaths(u.tree.visibleRows(nil)))
+	}
+
+	// the same for a mid-reverse flip
+	u.handle([]byte("j"))
+	u.handle([]byte("f"))
+	u.handle([]byte("kid"))
+	u.handle([]byte{'\r'})
+	if u.filter != "kid" {
+		t.Fatalf("filter in reverse = %q, want kid", u.filter)
+	}
+	u.handle([]byte("p"))
+	if u.filter != "" || u.filterScope != nil {
+		t.Errorf("flip reset = %q scope=%v, want all clear", u.filter, u.filterScope)
+	}
+}
+
 func TestRowLineHighlight(t *testing.T) {
 	const hash = "Abcdefghij0123456789abcdefghij01"
 	g := testGraph()
