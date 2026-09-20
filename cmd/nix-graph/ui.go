@@ -266,7 +266,7 @@ func (u *UI) handle(buf []byte) bool {
 				u.setSort(sortClosure)
 			case b == 'a':
 				u.setSort(sortAdded)
-			case b == 'f' || b == 'F':
+			case b == 'f' || b == 'F' || b == '/':
 				u.filterMode = true
 				u.filterScope = u.tree.visibleSet()
 			case b == 's':
@@ -955,12 +955,12 @@ func (u *UI) helpOverlay() string {
 	rows := [][2]string{
 		{"j/k, ↑/↓", "move selection"},
 		{"space, enter", "expand/collapse"},
-		{"h/l , ←/→", "collapse/drill down"},
+		{"h/l, ←/→", "collapse/drill down"},
 		{"e/E", "expand/collapse all"},
 		{"g/G", "jump to top/bottom"},
 		{"pgup/pgdn", "scroll by page"},
 		{"c/a/z/d/n", "sort mode switch"},
-		{"f", "filter by name or hash"},
+		{"f, /", "filter by name or hash"},
 		{"y", "copy hash/path/name"},
 		{"s", "shell in selected path"},
 		{"p", "flip tree at selected node"},
