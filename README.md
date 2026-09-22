@@ -18,7 +18,7 @@ Columns:
 
 ### Install
 
-Run without installing:
+Install from [nixpkgs](https://search.nixos.org/packages?channel=unstable&query=nix-graph), or run it without installing:
 
 ``` bash
 nix run github:AlexAntonik/nix-graph
