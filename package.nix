@@ -4,7 +4,7 @@
 }:
 buildGoModule (finalAttrs: {
   pname = "nix-graph";
-  version = "0.0.6";
+  version = "0.1.2";
 
   src = lib.cleanSource ./.;
   subPackages = [ "cmd/nix-graph" ];
