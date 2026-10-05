@@ -1019,6 +1019,15 @@ func (u *UI) overlay(title string, rows [][2]string, hint string) string {
 		}
 		return strings.Repeat("─", n)
 	}
+	// maxw goes negative once the terminal is narrower than the box the
+	// overlay wants, and the hint can still be wider than what is left, so
+	// both paddings have to absorb a negative count
+	space := func(n int) string {
+		if n < 0 {
+			n = 0
+		}
+		return strings.Repeat(" ", n)
+	}
 	var b strings.Builder
 	line := func(r int, s string) {
 		fmt.Fprintf(&b, "\x1b[%d;%dH%s%s", row+r, col, s, reset)
@@ -1035,13 +1044,13 @@ func (u *UI) overlay(title string, rows [][2]string, hint string) string {
 		line(i+1, dim+"│ "+reset+cyan+padEnd(r[0], kw)+reset+"  "+
 			padEnd(r[1], maxw-kw-2)+dim+" │"+reset)
 	}
-	blank := dim + "│ " + reset + strings.Repeat(" ", maxw) + dim + " │" + reset
+	blank := dim + "│ " + reset + space(maxw) + dim + " │" + reset
 	line(len(rows)+1, blank)
 	pad := (maxw - runeLen(hint)) / 2
 	if pad < 0 {
 		pad = 0
 	}
-	h := strings.Repeat(" ", pad) + hint + strings.Repeat(" ", maxw-pad-runeLen(hint))
+	h := space(pad) + hint + space(maxw-pad-runeLen(hint))
 	line(len(rows)+2, dim+"│ "+reset+dim+h+reset+dim+" │"+reset)
 	line(len(rows)+3, dim+"└"+dash(bw-2)+"┘"+reset)
 	return b.String()
