@@ -55,8 +55,8 @@ func Load(root string) (*Graph, error) {
 
 // parseInfoJSON turns the JSON output of nix path-info into a Graph.
 func parseInfoJSON(data []byte) (*Graph, error) {
-	var raw map[string]*Info
-	if err := json.Unmarshal(data, &raw); err != nil {
+	raw, err := decodeInfoJSON(data)
+	if err != nil {
 		return nil, fmt.Errorf("parse nix output: %w", err)
 	}
 	if len(raw) == 0 {
@@ -74,6 +74,34 @@ func parseInfoJSON(data []byte) (*Graph, error) {
 	}
 	g.countDirect()
 	return g, nil
+}
+
+type legacyInfo struct {
+	Path string `json:"path"`
+	Info
+}
+
+// decodeInfoJSON normalizes both nix path-info JSON layouts into a map.
+func decodeInfoJSON(data []byte) (map[string]*Info, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		var entries []legacyInfo
+		if err := json.Unmarshal(trimmed, &entries); err != nil {
+			return nil, err
+		}
+		raw := make(map[string]*Info, len(entries))
+		for _, entry := range entries {
+			if entry.Path != "" {
+				raw[entry.Path] = &entry.Info
+			}
+		}
+		return raw, nil
+	}
+	var raw map[string]*Info
+	if err := json.Unmarshal(trimmed, &raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
 }
 
 // nixPathInfo prefers --json-format, which newer nix versions accept, and
