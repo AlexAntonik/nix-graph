@@ -214,6 +214,34 @@ func TestParseInfoJSON(t *testing.T) {
 	}
 }
 
+func TestParseInfoJSONLegacyArray(t *testing.T) {
+	data := []byte(`[
+  {
+    "path": "/nix/store/aaa-root",
+    "narSize": 100,
+    "references": ["/nix/store/bbb-lib", "/nix/store/aaa-root"]
+  },
+  {
+    "path": "/nix/store/bbb-lib",
+    "narSize": 200,
+    "references": []
+  }
+]`)
+	g, err := parseInfoJSON(data)
+	if err != nil {
+		t.Fatalf("parseInfoJSON: %v", err)
+	}
+	if g.Size() != 2 {
+		t.Fatalf("Size = %d, want 2", g.Size())
+	}
+	if got := g.Get("/nix/store/aaa-root"); got == nil || got.Direct != 1 {
+		t.Fatalf("root info = %+v, want 1 direct reference", got)
+	}
+	if c := g.Closure("/nix/store/aaa-root"); c.Paths != 2 || c.Bytes != 300 {
+		t.Errorf("Closure(root) = %+v, want {2 300}", c)
+	}
+}
+
 func TestLastLine(t *testing.T) {
 	if got := lastLine("warning: x\nerror: no such path\n"); got != "error: no such path" {
 		t.Errorf("lastLine = %q, want the last line", got)
