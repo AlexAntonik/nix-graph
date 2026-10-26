@@ -4,7 +4,7 @@
 }:
 buildGoModule (finalAttrs: {
   pname = "nix-graph";
-  version = "0.1.2";
+  version = "0.1.3";
 
   src = lib.cleanSource ./.;
   subPackages = [ "cmd/nix-graph" ];
@@ -12,7 +12,6 @@ buildGoModule (finalAttrs: {
   env.CGO_ENABLED = "0";
   ldflags = [
     "-s"
-    "-w"
     "-X main.version=${finalAttrs.version}"
   ];
 
